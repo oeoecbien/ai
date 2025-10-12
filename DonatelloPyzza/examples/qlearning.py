@@ -2,7 +2,6 @@ import sys
 import os
 import random
 import time
-import pygame
 from typing import Dict, Tuple, List
 from collections import defaultdict
 
