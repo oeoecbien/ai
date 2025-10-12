@@ -1,134 +1,129 @@
-## DonatelloPyzza
+# DonatelloPyzza - Agent Q-Learning
 
-DonatelloPyzza is a simple and educational game to help beginners learn algorithmic in Python in high school and university.
+## Description
 
-A turtle can move through a grid and touch each cells until it finds the pizza.
-This game can be used at several levels:
-- for young beginners: they can hard-code a path to help the turtle find its pizza in small mazes.
-- for beginners: they can develop intuitive heuristics to find the pizza
-- for intermediate or advanced developers: they can develop a complex path finding method or AI-based solutions.
+DonatelloPyzza est un projet d'apprentissage par renforcement qui utilise l'algorithme Q-Learning pour entraîner une tortue à naviguer dans un labyrinthe et trouver une pizza.
 
+## Fonctionnalités
 
-![View of the game (please go to the homepage of the project to watch this gif)](https://github.com/MilowB/DonatelloPyzza/blob/master/views/example.gif)
-
+- Agent Q-Learning avec équation de Bellman
+- Stratégie epsilon-greedy adaptative
+- Système de récompenses avec bonus d'exploration
+- Visualisation en temps réel avec pygame
+- Métriques de performance et tests automatisés
 
 ## Installation
 
-### Dépendance système (Linux)
+```bash
+# Cloner le repository
+git clone <url-du-repo>
+cd DonatelloPyzza
 
-Avant d'installer `donatellopyzza`, vous devez installer les bibliothèques nécessaires à `pygame` :
+# Créer un environnement virtuel
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scripts\activate      # Windows
+
+# Installer les dépendances
+pip install -r requirements.txt
+```
+
+## Utilisation
 
 ```bash
-sudo apt-get update
-sudo apt-get install libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev
+cd examples
+python qlearning.py
 ```
 
-### DonatelloPyzza
+Le script vous guidera à travers la sélection de l'environnement, la configuration de l'entraînement et les tests de validation.
 
-`pip install donatellopyzza`
-
-
-## Getting started
-
-First, import the right modules to run the game:
+### Exemple d'utilisation programmatique
 
 ```python
-from donatellopyzza import Game
-from donatellopyzza import Action
-from donatellopyzza import Feedback
-```
+from donatellopyzza import RLGame, Action, Feedback
+from examples.qlearning import QLearningAgent
 
-`Game` is a class that you will use to create a game instance.
+# Créer l'agent
+agent = QLearningAgent(learning_rate=0.1, discount_factor=0.9, epsilon=0.3)
 
-Let's create the game and its environment:
-
-```python
-# specify the name of the maze
-__ENVIRONMENT__ = "maze"
-# display the interface (or not)
-__GUI__ = True
-
-game = Game(__ENVIRONMENT__, __GUI__)
-# returns a turtle that execute actions on its environment
+# Entraîner sur un environnement
+game = RLGame("maze", gui=True)
 turtle = game.start()
+reward, steps, success = agent.train_episode(game, turtle, show_gui=True, verbose=True)
 ```
 
-Once the game has started, you get a turtle instance which you can move around the board.
-To do this, the following instruction can be used:
+## Algorithme Q-Learning
 
+L'agent apprend une politique optimale en explorant l'environnement et en mettant à jour une table Q selon l'équation de Bellman :
+
+```
+Q(s,a) ← Q(s,a) + α[r + γ max Q(s',a') - Q(s,a)]
+```
+
+### Hyperparamètres
+- **Learning Rate (α)** : 0.1 - Vitesse d'apprentissage
+- **Discount Factor (γ)** : 0.9 - Importance des récompenses futures
+- **Epsilon (ε)** : 0.3 → 0.01 - Taux d'exploration (décroissant)
+
+### Système de Récompenses
 ```python
-feedback, _ = turtle.execute(Action.MOVE_FORWARD)
-print(feedback)
+rewards = {
+    'pizza_found': 200.0,      # Récompense principale
+    'pizza_touched': 100.0,    # Toucher la pizza
+    'collision': -15.0,        # Pénalité collision
+    'step': -0.5,              # Coût par étape
+    'wall_touched': -8.0,      # Pénalité mur
+    'new_state': 8.0,          # Bonus exploration
+    'proximity_bonus': 3.0,    # Bonus proximité
+    'efficiency_bonus': 10.0   # Bonus efficacité
+}
 ```
 
-You can use the feedback from the `execute()` method to see what happened after your action.
+## Environnements Disponibles
 
-Finally, let's run your turtle:
+1. **maze** : Labyrinthe standard (6x6)
+2. **assessment_maze** : Labyrinthe d'évaluation (8x8)
+3. **hard_maze** : Labyrinthe difficile (10x10)
+4. **line** : Environnement linéaire simple
+5. **test** : Environnement de test
 
-> python yourfile.py
+## Résultats Typiques
 
-## Learning the rules:  actions and feedbacks
+- **Épisodes d'entraînement** : 50
+- **Taux de succès** : 100%
+- **Meilleur chemin** : 15-25 étapes
+- **États appris** : 200-300
+- **Temps d'entraînement** : 2-5 minutes
 
-`Action` and `Feedback` define the different actions and feedbacks types. You can use the following actions in your code:
+### Évolution de l'Apprentissage
+```
+Épisode 1:  Échec | 1000 étapes | ε: 0.300
+Épisode 10: Succès | 45 étapes  | ε: 0.285
+Épisode 20: Succès | 28 étapes  | ε: 0.270
+Épisode 30: Succès | 22 étapes  | ε: 0.255
+Épisode 40: Succès | 19 étapes  | ε: 0.240
+Épisode 50: Succès | 17 étapes  | ε: 0.225
+```
 
-    Action.MOVE_FORWARD -> make your turtle go one step forward
-    Action.TURN_RIGHT -> your turtle will turn on its right
-    Action.TURN_LEFT -> on its left
-    Action.TOUCH -> the turtle will touch the cell in front of it to know its type
+## Dépannage
 
+**Import Error**
+```bash
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+```
 
-Depending on your action, the game can provide you one of the following feedback:
+**Pygame Non Installé**
+```bash
+pip install pygame
+```
 
-    Feedback.COLLISION -> you just tried to walk in a wall !
-    Feedback.MOVED -> you successfully moved
-    Feedback.MOVED_ON_PIZZA -> your turtle is on the pizza (congratulation!)
-    Feedback.TOUCHED_WALL -> you just touched a wall
-    Feedback.TOUCHED_NOTHING -> the touched cell is empty (no wall, no pizza, you can walk on it)
-    Feedback.TOUCHED_PIZZA -> the turtle touched the pizza
-
-
-## Generating and save your own mazes
-
-`Maze` is a class used to generate and save new mazes. You can retrieve saved maze by their names as indicated in example files. A new maze is generated (and saved) as follow:
-
+**Performance Lente**
 ```python
-from donatellopyzza import MazeGenerator
-
-generator = MazeGenerator()
-maze = generator.create_maze(10, 10)
-fn = "test"
-maze.save(maze, filename=fn)
+agent.train_episode(game, turtle, show_gui=False, verbose=False)
 ```
 
-For more details, you can find several complete examples of the game loop in the `examples` folder on the github repository of this project. You can also look for the documentation at this [link](https://milowb.github.io/DonatelloDocumentation/html/index.html)
+## Auteur
 
-Have fun!
-
-
-## What's new
-
-- 2024-09-27 (v1.8)
-    Add a RLGame class facilitating the use of RL algorithm.
-- 2024-09-25 (v1.7)
-    Add a reward function in order to play the game with reinforcement learning. Add the possibility to change the color of each cell for debugging.
-- 2023-04-09 (v1.6)
-    Integration of an algorithm assessment class. Allows to evaluate automatically a solution on several mazes.
-- 2023-04-07 (v1.5)
-    Integration of a maze generator from Alexandru Văleanu (https://github.com/AlexandruValeanu/Mazify).
-- 2023-01-17 (v1.2)
-    Initial release
-
-
-## Roadmap
-
-- make several tests for this package
-- make tutorials to help beginners use this package
-- make a more formal documentation
-- promote this game through a website
-- ~~add a RLGame class to facilitate the use of RL algorithm for solving the game~~
-- ~~add a reward in the step() method to allow reinforcment learning~~
-- ~~adapt the GUI to resize it depending on the number of cells~~
-- ~~add a test infrastructure to validate users' algorithm on several mazes~~
-- ~~make possible to the user to select the difficulty of the maze when generating it~~
-- ~~debug the GUI~~
-- ~~add a gridworld generator~~
+Développé dans le cadre d'un projet d'apprentissage par renforcement.
+Technologies utilisées : Python, Pygame, Q-Learning, Reinforcement Learning.
