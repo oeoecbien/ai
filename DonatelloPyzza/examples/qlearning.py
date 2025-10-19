@@ -1,5 +1,5 @@
 """
-Agent Q-Learning pour DonatelloPyzza
+Agent Q-Learning pour DonatelloPyzza avec Reward Shaping Intelligent et Visualisation des Couleurs
 
 Ce fichier implémente un agent Q-Learning complet pour apprendre à naviguer dans des labyrinthes.
 L'agent utilise l'apprentissage par renforcement pour découvrir le chemin optimal vers la pizza.
@@ -12,10 +12,12 @@ Composants principaux :
 - ExplorationStrategy : Équilibre exploration/exploitation
 - ConvergenceDetector : Détection de la convergence
 - PerformanceTracker : Suivi des performances
+- ColorVisualizationSystem : Système de visualisation des couleurs intelligent
 - EnvironmentAdapter : Interface avec DonatelloPyzza
 - QLearningAgent : Agent principal qui coordonne tout
 
-L'agent peut fonctionner en mode "pur" (académique) ou "avancé" (avec reward shaping).
+L'agent peut fonctionner en mode "pur" (académique) ou "avancé" (avec reward shaping intelligent).
+Le système de couleurs s'adapte automatiquement aux performances et aux phases d'apprentissage.
 """
 
 import sys
@@ -25,6 +27,8 @@ import signal
 from typing import Dict, Tuple, List, Any, Optional
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+import pygame
+import time
 
 # Configuration du chemin d'accès au module parent
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -62,6 +66,7 @@ class AgentConfig:
     q_value_max: float = 1000.0          # Valeur Q maximum
     pure_qlearning: bool = False         # Mode Q-Learning pur (cours académique)
     intelligent_shaping: bool = True     # Mode reward shaping intelligent
+    color_visualization: bool = True     # Mode visualisation des couleurs
 
 
 StateKey = Tuple[Tuple[int, int], int, bool]
@@ -456,13 +461,99 @@ class PerformanceTracker:
         self.position_history.clear()
 
 
+class ColorVisualizationSystem:
+    """Système de visualisation des couleurs pour l'apprentissage"""
+    def __init__(self):
+        self.episode_count = 0
+        self.success_count = 0
+        self.performance_history = deque(maxlen=10)
+        self.color_schemes = {
+            "exploration": self._get_exploration_colors,
+            "learning": self._get_learning_colors,
+            "optimization": self._get_optimization_colors,
+            "success": self._get_success_colors,
+            "failure": self._get_failure_colors
+        }
+    
+    def update_performance(self, success: bool, steps: int, phase: str):
+        """Met à jour les performances pour adapter les couleurs"""
+        self.episode_count += 1
+        if success:
+            self.success_count += 1
+        
+        self.performance_history.append((success, steps))
+        
+        # Déterminer le schéma de couleurs selon la phase et les performances
+        if success:
+            return self.color_schemes["success"]()
+        elif phase == "exploration":
+            return self.color_schemes["exploration"]()
+        elif phase == "learning":
+            return self.color_schemes["learning"]()
+        elif phase == "optimization":
+            return self.color_schemes["optimization"]()
+        else:
+            return self.color_schemes["failure"]()
+    
+    def _get_exploration_colors(self):
+        """Couleurs pour la phase d'exploration (bleu/cyan)"""
+        return {
+            'wall': pygame.Color(50, 50, 100, 255),      # Bleu foncé pour les murs
+            'path': pygame.Color(100, 150, 255, 255),   # Bleu clair pour les chemins
+            'pizza': pygame.Color(255, 200, 0, 255),    # Orange pour la pizza
+            'turtle': pygame.Color(0, 255, 255, 255)    # Cyan pour la tortue
+        }
+    
+    def _get_learning_colors(self):
+        """Couleurs pour la phase d'apprentissage (vert)"""
+        return {
+            'wall': pygame.Color(50, 100, 50, 255),       # Vert foncé pour les murs
+            'path': pygame.Color(100, 255, 100, 255),    # Vert clair pour les chemins
+            'pizza': pygame.Color(255, 150, 0, 255),     # Orange pour la pizza
+            'turtle': pygame.Color(0, 255, 0, 255)       # Vert pour la tortue
+        }
+    
+    def _get_optimization_colors(self):
+        """Couleurs pour la phase d'optimisation (violet)"""
+        return {
+            'wall': pygame.Color(100, 50, 100, 255),     # Violet foncé pour les murs
+            'path': pygame.Color(200, 100, 255, 255),   # Violet clair pour les chemins
+            'pizza': pygame.Color(255, 100, 0, 255),     # Orange pour la pizza
+            'turtle': pygame.Color(255, 0, 255, 255)     # Magenta pour la tortue
+        }
+    
+    def _get_success_colors(self):
+        """Couleurs pour le succès (or/jaune)"""
+        return {
+            'wall': pygame.Color(100, 100, 50, 255),     # Marron pour les murs
+            'path': pygame.Color(255, 255, 100, 255),   # Jaune clair pour les chemins
+            'pizza': pygame.Color(255, 215, 0, 255),     # Or pour la pizza
+            'turtle': pygame.Color(255, 255, 0, 255)     # Jaune pour la tortue
+        }
+    
+    def _get_failure_colors(self):
+        """Couleurs pour l'échec (rouge)"""
+        return {
+            'wall': pygame.Color(100, 50, 50, 255),     # Rouge foncé pour les murs
+            'path': pygame.Color(255, 100, 100, 255),   # Rouge clair pour les chemins
+            'pizza': pygame.Color(255, 50, 0, 255),      # Rouge pour la pizza
+            'turtle': pygame.Color(255, 0, 0, 255)       # Rouge pour la tortue
+        }
+    
+    def get_performance_colors(self, success: bool, steps: int, phase: str):
+        """Retourne les couleurs selon les performances"""
+        return self.update_performance(success, steps, phase)
+
+
 class EnvironmentAdapter:
     """Interface entre l'agent et l'environnement DonatelloPyzza"""
-    def __init__(self, environment_name: str, show_gui: bool = True):
+    def __init__(self, environment_name: str, show_gui: bool = True, color_visualization: bool = True):
         self.environment_name = environment_name  # Nom du labyrinthe
         self.show_gui = show_gui  # Afficher l'interface graphique ?
+        self.color_visualization = color_visualization  # Mode visualisation des couleurs
         self.game = None  # Instance du jeu
         self.turtle = None  # Instance de la tortue
+        self.color_system = ColorVisualizationSystem() if color_visualization else None
     
     def reset(self) -> State:
         """Remet l'environnement à zéro et retourne l'état initial"""
@@ -497,6 +588,52 @@ class EnvironmentAdapter:
     
     def is_won(self) -> bool:
         return self.game.isWon(prnt=False) if self.game else False
+    
+    def update_colors(self, success: bool, steps: int, phase: str):
+        """Met à jour les couleurs selon les performances de l'agent"""
+        if not self.color_visualization or not self.game:
+            return
+        
+        try:
+            # Obtenir les couleurs selon les performances
+            colors = self.color_system.get_performance_colors(success, steps, phase)
+            
+            # Récupérer les carrés de la grille
+            squares = self.game.getSquaresDict()
+            
+            # Appliquer les nouvelles couleurs
+            for key in squares:
+                # Déterminer le type de carré et appliquer la couleur appropriée
+                if 'wall' in str(key).lower() or 'obstacle' in str(key).lower():
+                    squares[key] = colors['wall']
+                elif 'pizza' in str(key).lower() or 'goal' in str(key).lower():
+                    squares[key] = colors['pizza']
+                else:
+                    squares[key] = colors['path']
+            
+            # Appliquer les couleurs à l'environnement
+            self.game.setSquaresColors(squares)
+            
+        except Exception as e:
+            # En cas d'erreur, continuer sans changer les couleurs
+            pass
+    
+    def apply_episode_colors(self, success: bool, steps: int, phase: str):
+        """Applique les couleurs pour un épisode complet"""
+        if not self.color_visualization or not self.game:
+            return
+        
+        try:
+            colors = self.color_system.get_performance_colors(success, steps, phase)
+            squares = self.game.getSquaresDict()
+            
+            for key in squares:
+                squares[key] = colors['path']
+            
+            self.game.setSquaresColors(squares)
+            
+        except Exception as e:
+            pass
 
 
 class QLearningAgent:
@@ -585,6 +722,11 @@ class QLearningAgent:
         if steps >= self.max_steps and not success:
             if verbose:
                 print(f"\n[ÉCHEC] Limite d'étapes atteinte ({self.max_steps}) - l'agent n'a pas trouvé la pizza")
+        
+        # Mettre à jour les couleurs selon les performances
+        if env_adapter.color_visualization:
+            phase = self.reward_system.learning_phase
+            env_adapter.apply_episode_colors(success, steps, phase)
         
         self._update_statistics(total_reward, steps, success)
         
@@ -694,14 +836,18 @@ def train_agent(
     print(f"Learning rate: {agent.config.learning_rate}")
     print(f"Discount factor: {agent.config.discount_factor}")
     print(f"Epsilon initial: {agent.config.epsilon}")
+    print(f"Reward shaping intelligent: {'Activé' if agent.config.intelligent_shaping else 'Désactivé'}")
+    print(f"Visualisation couleurs: {'Activée' if agent.config.color_visualization else 'Désactivée'}")
     print("=" * 60)
     print("[ASTUCE] Appuyez sur Ctrl+C pour arrêter l'entraînement à tout moment")
+    if agent.config.color_visualization:
+        print("[COULEURS] Les couleurs changent selon les performances et la phase d'apprentissage")
     print("=" * 60)
 
     successful_episodes = 0
     episode = 0
     
-    env_adapter = EnvironmentAdapter(environment_name, show_gui)
+    env_adapter = EnvironmentAdapter(environment_name, show_gui, config.color_visualization if config else True)
 
     while not agent.convergence_detector.converged and not interrupted and episode < max_episodes:
         episode += 1
@@ -733,6 +879,13 @@ def train_agent(
                 print(f"  Phase d'apprentissage: {agent.reward_system.learning_phase}")
                 print(f"  Position pizza: {agent.reward_system.pizza_position if agent.reward_system.pizza_position else 'Non détectée'}")
                 print(f"  Récompenses normalisées: {len(agent.reward_system.reward_history)} échantillons")
+            
+            # Afficher les informations sur la visualisation des couleurs
+            if agent.config.color_visualization:
+                print(f"  Visualisation couleurs: Activée")
+                print(f"  Schéma de couleurs: {agent.reward_system.learning_phase}")
+            else:
+                print(f"  Visualisation couleurs: Désactivée")
             
             # Vérifier la convergence après chaque analyse
             if agent.check_convergence():
@@ -802,9 +955,11 @@ def get_user_config() -> Dict[str, Any]:
     try:
         show_gui = input("Afficher l'interface graphique ? (o/n) [défaut: o]: ").lower() != 'n'
         verbose = input("Affichage détaillé ? (o/n) [défaut: o]: ").lower() != 'n'
+        color_viz = input("Visualisation des couleurs intelligente ? (o/n) [défaut: o]: ").lower() != 'n'
     except ValueError:
         show_gui = True
         verbose = True
+        color_viz = True
     
     try:
         advanced = input("Configuration avancée ? (o/n) [défaut: n]: ").lower() == 'o'
@@ -814,18 +969,20 @@ def get_user_config() -> Dict[str, Any]:
             max_episodes = int(input("Max épisodes [défaut: 2000]: ") or "2000")
             pure_mode = input("Mode Q-Learning pur (sans reward shaping) ? (o/n) [défaut: n]: ").lower() == 'o'
             intelligent_mode = input("Mode reward shaping intelligent ? (o/n) [défaut: o]: ").lower() != 'n'
+            color_mode = input("Visualisation des couleurs intelligente ? (o/n) [défaut: o]: ").lower() != 'n'
             
             config = AgentConfig(
                 learning_rate=learning_rate,
                 epsilon=epsilon,
                 pure_qlearning=pure_mode,
-                intelligent_shaping=intelligent_mode
+                intelligent_shaping=intelligent_mode,
+                color_visualization=color_mode
             )
         else:
-            config = AgentConfig()
+            config = AgentConfig(color_visualization=color_viz)
             max_episodes = 2000
     except ValueError:
-        config = AgentConfig()
+        config = AgentConfig(color_visualization=color_viz)
         max_episodes = 2000
 
     return {
