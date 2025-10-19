@@ -52,10 +52,14 @@ class QLearningAgent:
         convergence_window: int = 20,
         convergence_threshold: float = 0.05,
         max_steps: int = 1000,
-        random_seed: int = None
+        random_seed: int = None,
+        # Smart Explorer parameters
+        systematic_exploration_episodes: int = 50,
+        min_adaptive_steps: int = 50,
+        adaptive_margin: float = 0.1
     ):
         """
-        Initialise l'agent Q-Learning avec critères de convergence
+        Initialise l'agent Q-Learning avec critères de convergence et Smart Explorer
         
         Args:
             learning_rate: Taux d'apprentissage (α)
@@ -66,6 +70,9 @@ class QLearningAgent:
             convergence_window: Nombre d'épisodes pour évaluer la convergence
             convergence_threshold: Seuil de variation pour considérer la convergence
             max_steps: Nombre maximum d'étapes par épisode pour éviter les boucles infinies
+            systematic_exploration_episodes: Nombre d'épisodes pour exploration systématique
+            min_adaptive_steps: Nombre minimum d'étapes pour l'adaptation
+            adaptive_margin: Marge pour accepter une légère augmentation temporaire
         """
         # Hyperparamètres Q-Learning
         self.learning_rate = learning_rate
@@ -78,6 +85,17 @@ class QLearningAgent:
         self.convergence_window = convergence_window
         self.convergence_threshold = convergence_threshold
         self.max_steps = max_steps
+        self.original_max_steps = max_steps  # Sauvegarde de la valeur initiale
+
+        # Smart Explorer parameters
+        self.systematic_exploration_episodes = systematic_exploration_episodes
+        self.min_adaptive_steps = min_adaptive_steps
+        self.adaptive_margin = adaptive_margin
+        
+        # Adaptive Episode Length
+        self.best_successful_steps = float('inf')
+        self.adaptive_steps_history = []
+        self.adaptive_window = 10  # Nombre d'épisodes pour évaluer l'adaptation
 
         # Q-table: état -> {action: valeur_Q}
         self.q_table: Dict[Tuple, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
@@ -185,9 +203,50 @@ class QLearningAgent:
         
         return base_reward
 
-    def choose_action(self, state: Tuple) -> Action:
+    def systematic_exploration(self, state: Tuple) -> Action:
         """
-        Sélectionne une action selon la politique epsilon-greedy améliorée
+        Exploration systématique : tour d'horizon complet avant de se déplacer
+        
+        Args:
+            state: État actuel (position, orientation)
+            
+        Returns:
+            Action d'exploration systématique
+        """
+        # Si nouvel état, faire un tour d'horizon complet
+        if state not in self.visited_states:
+            # Séquence d'exploration : TOUCH pour détecter les obstacles
+            # puis tourner pour explorer toutes les directions
+            if not hasattr(self, '_exploration_sequence'):
+                self._exploration_sequence = [
+                    Action.TOUCH,      # Détecter obstacle devant
+                    Action.TURN_LEFT,  # Regarder à gauche
+                    Action.TOUCH,      # Détecter obstacle à gauche
+                    Action.TURN_LEFT,  # Regarder en arrière
+                    Action.TOUCH,      # Détecter obstacle derrière
+                    Action.TURN_LEFT,   # Regarder à droite
+                    Action.TOUCH,      # Détecter obstacle à droite
+                    Action.TURN_LEFT,  # Retourner face avant
+                    Action.MOVE_FORWARD # Avancer d'un pas
+                ]
+                self._exploration_index = 0
+            
+            # Exécuter la séquence d'exploration
+            if self._exploration_index < len(self._exploration_sequence):
+                action = self._exploration_sequence[self._exploration_index]
+                self._exploration_index += 1
+                return action
+            else:
+                # Séquence terminée, réinitialiser pour le prochain état
+                self._exploration_index = 0
+                return Action.MOVE_FORWARD
+        
+        # Si état déjà visité, utiliser Q-Learning classique
+        return self.choose_action_classic(state)
+
+    def choose_action_classic(self, state: Tuple) -> Action:
+        """
+        Sélection d'action classique (Q-Learning standard)
         
         Args:
             state: État actuel
@@ -212,6 +271,24 @@ class QLearningAgent:
 
         # Si aucune information, action aléatoire
         return random.choice(self.actions)
+
+    def choose_action(self, state: Tuple) -> Action:
+        """
+        Smart Explorer : Sélection d'action intelligente avec exploration systématique
+        
+        Args:
+            state: État actuel
+            
+        Returns:
+            Action à exécuter
+        """
+        # Phase 1: Exploration systématique pour les premiers épisodes
+        if self.episode_count < self.systematic_exploration_episodes:
+            return self.systematic_exploration(state)
+        
+        # Phase 2: Q-Learning classique avec exploration adaptative
+        else:
+            return self.choose_action_classic(state)
 
     def update_q_value(self, state: Tuple, action: Action, reward: float, next_state: Tuple):
         """
@@ -249,6 +326,45 @@ class QLearningAgent:
             new_q = max(self.Q_VALUE_MIN, min(self.Q_VALUE_MAX, new_q))
 
         self.q_table[state][action_key] = new_q
+
+    def update_adaptive_episode_length(self, steps: int, success: bool):
+        """
+        Met à jour la limite d'épisodes adaptative basée sur les performances
+        
+        Args:
+            steps: Nombre d'étapes de l'épisode
+            success: Si l'épisode a réussi
+        """
+        if success:
+            # Mettre à jour le meilleur score réussi
+            if steps < self.best_successful_steps:
+                self.best_successful_steps = steps
+                # Ajuster max_steps avec une marge de sécurité
+                new_max_steps = max(
+                    int(steps * (1 + self.adaptive_margin)),  # Marge de 10% par défaut
+                    self.min_adaptive_steps  # Minimum absolu
+                )
+                self.max_steps = new_max_steps
+                
+                if hasattr(self, '_verbose_adaptive') and self._verbose_adaptive:
+                    print(f"  🔄 Adaptive Episode Length: max_steps ajusté à {self.max_steps} "
+                          f"(meilleur score: {steps} étapes)")
+            
+            # Enregistrer dans l'historique pour analyse
+            self.adaptive_steps_history.append(steps)
+            if len(self.adaptive_steps_history) > self.adaptive_window:
+                self.adaptive_steps_history.pop(0)
+            
+            # Vérifier si on peut optimiser davantage
+            if len(self.adaptive_steps_history) >= 5:
+                recent_avg = sum(self.adaptive_steps_history[-5:]) / 5
+                if recent_avg < self.max_steps * 0.8:  # Si on fait 20% mieux que la limite
+                    new_limit = max(int(recent_avg * 1.1), self.min_adaptive_steps)
+                    if new_limit < self.max_steps:
+                        self.max_steps = new_limit
+                        if hasattr(self, '_verbose_adaptive') and self._verbose_adaptive:
+                            print(f"  📈 Optimisation: max_steps réduit à {self.max_steps} "
+                                  f"(moyenne récente: {recent_avg:.1f})")
 
     def decay_epsilon(self):
         """Réduit le taux d'exploration de manière standard"""
@@ -333,7 +449,7 @@ class QLearningAgent:
 
     def _update_statistics(self, total_reward: float, steps: int, success: bool):
         """
-        Met à jour les statistiques de l'agent
+        Met à jour les statistiques de l'agent avec Adaptive Episode Length
         
         Args:
             total_reward: Récompense totale de l'épisode
@@ -346,6 +462,9 @@ class QLearningAgent:
 
         # Enregistrement des résultats pour l'analyse de convergence
         self.episode_results.append((total_reward, steps, success))
+        
+        # Adaptive Episode Length: ajuster max_steps basé sur les performances
+        self.update_adaptive_episode_length(steps, success)
         
         # Décroissance de l'exploration
         self.decay_epsilon()
@@ -468,13 +587,19 @@ class QLearningAgent:
             new_states_count = len(self.visited_states)
             efficiency = "efficace" if success and steps <= self.EFFICIENT_STEPS_THRESHOLD else "normal"
             convergence_status = "convergé" if converged else "en cours"
+            
+            # Affichage des informations adaptatives
+            adaptive_info = ""
+            if hasattr(self, 'best_successful_steps') and self.best_successful_steps != float('inf'):
+                adaptive_info = f", limite adaptative: {self.max_steps} (meilleur: {self.best_successful_steps})"
+            
             print(f"\nEpisode {self.episode_count}: "
                   f"{'Succès' if success else 'Échec'} en {steps} étapes, "
                   f"récompense {total_reward:.1f}, "
                   f"epsilon {self.epsilon:.3f}, "
                   f"{new_states_count} nouveaux états, "
                   f"performance {efficiency}, "
-                  f"convergence {convergence_status}")
+                  f"convergence {convergence_status}{adaptive_info}")
 
         return total_reward, steps, success
 
@@ -545,17 +670,27 @@ def train_agent(
     signal.signal(signal.SIGINT, signal_handler)
     
     agent = QLearningAgent()
+    
+    # Activer le mode verbose pour l'adaptation
+    agent._verbose_adaptive = verbose
 
     print("=" * 60)
-    print("ENTRAÎNEMENT Q-LEARNING AVEC CONVERGENCE - DONATELLOPYZZA")
+    print("ENTRAÎNEMENT Q-LEARNING AVEC SMART EXPLORER - DONATELLOPYZZA")
     print("=" * 60)
     print(f"Environnement: {environment_name}")
     print(f"Fenêtre de convergence: {agent.convergence_window} épisodes (automatique)")
     print(f"Seuil de convergence: {agent.convergence_threshold} (automatique)")
-    print(f"Limite d'étapes par épisode: {agent.max_steps}")
+    print(f"Limite d'étapes initiale: {agent.max_steps} (adaptative)")
     print(f"Learning rate: {agent.learning_rate}")
     print(f"Discount factor: {agent.discount_factor}")
     print(f"Epsilon initial: {agent.epsilon}")
+    print(f"Smart Explorer: {agent.systematic_exploration_episodes} épisodes d'exploration systématique")
+    print(f"Adaptive Episode Length: limite minimale {agent.min_adaptive_steps} étapes")
+    print("=" * 60)
+    print("Nouvelles fonctionnalités:")
+    print("  🔍 Smart Explorer: Exploration systématique pour nouveaux états")
+    print("  📏 Adaptive Episode Length: Ajustement automatique des limites")
+    print("  🎯 Convergence intelligente: Optimisation basée sur les performances")
     print("=" * 60)
     print("Astuce: Appuyez sur Ctrl+C pour arrêter l'entraînement à tout moment")
     print("=" * 60)
