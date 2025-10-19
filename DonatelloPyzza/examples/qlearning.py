@@ -347,7 +347,7 @@ class QLearningAgent:
                 self.max_steps = new_max_steps
                 
                 if hasattr(self, '_verbose_adaptive') and self._verbose_adaptive:
-                    print(f"  🔄 Adaptive Episode Length: max_steps ajusté à {self.max_steps} "
+                    print(f"  [DEBUG] Adaptive Episode Length: max_steps ajusté à {self.max_steps} "
                           f"(meilleur score: {steps} étapes)")
             
             # Enregistrer dans l'historique pour analyse
@@ -363,7 +363,7 @@ class QLearningAgent:
                     if new_limit < self.max_steps:
                         self.max_steps = new_limit
                         if hasattr(self, '_verbose_adaptive') and self._verbose_adaptive:
-                            print(f"  📈 Optimisation: max_steps réduit à {self.max_steps} "
+                            print(f"  [OPTIMISATION] max_steps réduit à {self.max_steps} "
                                   f"(moyenne récente: {recent_avg:.1f})")
 
     def decay_epsilon(self):
@@ -442,8 +442,24 @@ class QLearningAgent:
 
         # Affichage
         if verbose:
-            print(f"Episode {self.episode_count + 1}, étape {steps}: {str(action)} -> "
-                  f"pos {new_position}, récompense {reward:.1f}, {str(feedback)}")
+            # Messages plus humains et étudiants
+            action_desc = {
+                'MOVE_FORWARD': 'avance',
+                'TURN_LEFT': 'tourne à gauche', 
+                'TURN_RIGHT': 'tourne à droite',
+                'TOUCH': 'touche'
+            }.get(str(action), str(action))
+            
+            feedback_desc = {
+                'MOVED_ON_PIZZA': 'PIZZA TROUVÉE!',
+                'TOUCHED_PIZZA': 'a touché la pizza',
+                'COLLISION': 'collision avec un mur',
+                'TOUCHED_WALL': 'a touché un mur',
+                'MOVED': 's\'est déplacé'
+            }.get(str(feedback), str(feedback))
+            
+            print(f"Episode {self.episode_count + 1}, étape {steps}: {action_desc} -> "
+                  f"position {new_position}, récompense {reward:.1f}, {feedback_desc}")
 
         return reward, next_state, game.isWon(prnt=False)
 
@@ -562,7 +578,13 @@ class QLearningAgent:
             # Vérification de la victoire
             if success:
                 if verbose:
-                    print(f"\nVictoire! Pizza trouvée en {steps} étapes (récompense: {total_reward:.1f})")
+                    print(f"\n[SUCCÈS] Pizza trouvée en {steps} étapes! (récompense totale: {total_reward:.1f})")
+                    if steps <= 20:
+                        print("  -> Excellent chemin trouvé!")
+                    elif steps <= 50:
+                        print("  -> Bon chemin, peut-être optimisable...")
+                    else:
+                        print("  -> Chemin trouvé, mais il y a sûrement mieux...")
                 break
 
             # Transition vers l'état suivant
@@ -571,7 +593,9 @@ class QLearningAgent:
         # Vérification si l'épisode a été interrompu par la limite d'étapes
         if steps >= self.max_steps and not success:
             if verbose:
-                print(f"\nLimite d'étapes atteinte ({self.max_steps}), épisode interrompu (récompense: {total_reward:.1f})")
+                print(f"\n[ÉCHEC] Limite d'étapes atteinte ({self.max_steps}) - l'agent n'a pas trouvé la pizza")
+                print(f"  -> Récompense totale: {total_reward:.1f}")
+                print("  -> L'agent doit encore apprendre...")
 
         # Mise à jour des statistiques seulement en mode entraînement
         if training_mode:
@@ -593,13 +617,16 @@ class QLearningAgent:
             if hasattr(self, 'best_successful_steps') and self.best_successful_steps != float('inf'):
                 adaptive_info = f", limite adaptative: {self.max_steps} (meilleur: {self.best_successful_steps})"
             
-            print(f"\nEpisode {self.episode_count}: "
-                  f"{'Succès' if success else 'Échec'} en {steps} étapes, "
-                  f"récompense {total_reward:.1f}, "
-                  f"epsilon {self.epsilon:.3f}, "
-                  f"{new_states_count} nouveaux états, "
-                  f"performance {efficiency}, "
-                  f"convergence {convergence_status}{adaptive_info}")
+            # Messages plus étudiants et humains
+            status_emoji = "✓" if success else "✗"
+            status_text = "Réussi!" if success else "Échoué"
+            
+            print(f"\nEpisode {self.episode_count}: {status_emoji} {status_text} en {steps} étapes")
+            print(f"  -> Récompense: {total_reward:.1f}")
+            print(f"  -> Epsilon (exploration): {self.epsilon:.3f}")
+            print(f"  -> Nouveaux états découverts: {new_states_count}")
+            print(f"  -> Performance: {efficiency}")
+            print(f"  -> Convergence: {convergence_status}{adaptive_info}")
 
         return total_reward, steps, success
 
@@ -619,27 +646,27 @@ class QLearningAgent:
         convergence_info = self.get_convergence_info()
         
         print("\n" + "=" * 50)
-        print("RÉSUMÉ DE CONVERGENCE")
+        print("ANALYSE DE CONVERGENCE")
         print("=" * 50)
         
         if convergence_info['converged']:
-            print("CONVERGENCE ATTEINTE!")
-            print(f"   - Coefficient de variation: {convergence_info['coefficient_variation']:.4f}")
+            print("[SUCCÈS] CONVERGENCE ATTEINTE! L'agent a vraiment appris!")
+            print(f"   - Stabilité des performances: {convergence_info['coefficient_variation']:.4f}")
             print(f"   - Seuil requis: {convergence_info['threshold']}")
             print(f"   - Performance moyenne: {convergence_info['mean_performance']:.1f} étapes")
             print(f"   - Écart-type: {convergence_info['std_performance']:.1f} étapes")
             print(f"   - Épisodes analysés: {convergence_info['episodes_analyzed']}")
         else:
-            print("Convergence en cours...")
+            print("[APPRENTISSAGE] Convergence en cours... l'agent apprend encore")
             if 'episodes_needed' in convergence_info:
                 print(f"   - Épisodes nécessaires: {convergence_info['episodes_needed']}")
             else:
-                print(f"   - CV actuel: {convergence_info['coefficient_variation']:.4f}")
+                print(f"   - Stabilité actuelle: {convergence_info['coefficient_variation']:.4f}")
                 print(f"   - Seuil requis: {convergence_info['threshold']}")
                 print(f"   - Performance moyenne: {convergence_info['mean_performance']:.1f} étapes")
                 print(f"   - Épisodes analysés: {convergence_info['episodes_analyzed']}")
         
-        print(f"   - Epsilon actuel: {convergence_info['epsilon']:.3f}")
+        print(f"   - Taux d'exploration: {convergence_info['epsilon']:.3f}")
         print("=" * 50)
 
 
@@ -675,24 +702,25 @@ def train_agent(
     agent._verbose_adaptive = verbose
 
     print("=" * 60)
-    print("ENTRAÎNEMENT Q-LEARNING AVEC SMART EXPLORER - DONATELLOPYZZA")
+    print("ENTRAÎNEMENT Q-LEARNING - DONATELLOPYZZA")
     print("=" * 60)
     print(f"Environnement: {environment_name}")
-    print(f"Fenêtre de convergence: {agent.convergence_window} épisodes (automatique)")
-    print(f"Seuil de convergence: {agent.convergence_threshold} (automatique)")
-    print(f"Limite d'étapes initiale: {agent.max_steps} (adaptative)")
-    print(f"Learning rate: {agent.learning_rate}")
-    print(f"Discount factor: {agent.discount_factor}")
-    print(f"Epsilon initial: {agent.epsilon}")
-    print(f"Smart Explorer: {agent.systematic_exploration_episodes} épisodes d'exploration systématique")
-    print(f"Adaptive Episode Length: limite minimale {agent.min_adaptive_steps} étapes")
+    print(f"Configuration de l'agent:")
+    print(f"  - Fenêtre de convergence: {agent.convergence_window} épisodes")
+    print(f"  - Seuil de convergence: {agent.convergence_threshold}")
+    print(f"  - Limite d'étapes initiale: {agent.max_steps} (s'adapte automatiquement)")
+    print(f"  - Learning rate: {agent.learning_rate}")
+    print(f"  - Discount factor: {agent.discount_factor}")
+    print(f"  - Epsilon initial: {agent.epsilon}")
+    print(f"  - Exploration systématique: {agent.systematic_exploration_episodes} épisodes")
+    print(f"  - Limite minimale: {agent.min_adaptive_steps} étapes")
     print("=" * 60)
-    print("Nouvelles fonctionnalités:")
-    print("  🔍 Smart Explorer: Exploration systématique pour nouveaux états")
-    print("  📏 Adaptive Episode Length: Ajustement automatique des limites")
-    print("  🎯 Convergence intelligente: Optimisation basée sur les performances")
+    print("Fonctionnalités avancées:")
+    print("  [SMART EXPLORER] Exploration systématique pour nouveaux états")
+    print("  [ADAPTIVE LENGTH] Ajustement automatique des limites")
+    print("  [CONVERGENCE] Optimisation basée sur les performances")
     print("=" * 60)
-    print("Astuce: Appuyez sur Ctrl+C pour arrêter l'entraînement à tout moment")
+    print("[ASTUCE] Appuyez sur Ctrl+C pour arrêter l'entraînement à tout moment")
     print("=" * 60)
 
     successful_episodes = 0
@@ -717,7 +745,7 @@ def train_agent(
             stats = agent.get_statistics()
             success_rate = successful_episodes / episode
             
-            print(f"\nStatistiques après {episode} épisodes:")
+            print(f"\n[ANALYSE] BILAN APRÈS {episode} ÉPISODES:")
             print(f"  Taux de succès global: {success_rate:.1%}")
             
             # Ajout du taux de succès récent
@@ -727,16 +755,17 @@ def train_agent(
                 recent_success_rate = recent_successes / len(recent_results)
                 print(f"  Taux de succès récent ({agent.convergence_window}): {recent_success_rate:.1%}")
             
-            print(f"  Meilleur chemin: {stats['best_steps']} étapes")
-            print(f"  Epsilon: {stats['epsilon']:.3f}")
-            print(f"  Q-table: {stats['q_table_size']} états")
+            print(f"  Meilleur chemin trouvé: {stats['best_steps']} étapes")
+            print(f"  Epsilon (exploration): {stats['epsilon']:.3f}")
+            print(f"  États appris: {stats['q_table_size']}")
             
+            # Commentaires étudiants
             if stats['best_steps'] < 50:
-                print(f"  Performance: excellente (≤50 étapes)")
+                print(f"  [EXCELLENT] Performance: excellente! (≤50 étapes)")
             elif stats['best_steps'] < 100:
-                print(f"  Performance: bonne (≤100 étapes)")
+                print(f"  [BIEN] Performance: bonne (≤100 étapes)")
             else:
-                print(f"  Performance: en cours d'apprentissage")
+                print(f"  [APPRENTISSAGE] Performance: encore en apprentissage...")
             
             # Affichage du résumé de convergence
             agent.print_convergence_summary()
@@ -744,37 +773,38 @@ def train_agent(
     # Résultats finaux
     print("\n" + "=" * 60)
     if interrupted:
-        print("Entraînement interrompu par l'utilisateur (Ctrl+C)")
+        print("[INTERRUPTION] Entraînement interrompu par l'utilisateur (Ctrl+C)")
     else:
-        print("Entraînement terminé - convergence atteinte")
+        print("[TERMINÉ] Entraînement terminé - convergence atteinte!")
     print("=" * 60)
     
     final_stats = agent.get_statistics()
     final_success_rate = successful_episodes / episode
     convergence_info = agent.get_convergence_info()
     
-    print(f"Épisodes total: {episode}")
-    print(f"Taux de succès final: {final_success_rate:.1%}")
-    print(f"Meilleur chemin trouvé: {final_stats['best_steps']} étapes")
-    print(f"États appris: {final_stats['q_table_size']}")
+    print(f"📈 RÉSULTATS FINAUX:")
+    print(f"  Épisodes total: {episode}")
+    print(f"  Taux de succès final: {final_success_rate:.1%}")
+    print(f"  Meilleur chemin trouvé: {final_stats['best_steps']} étapes")
+    print(f"  États appris: {final_stats['q_table_size']}")
     
     if convergence_info['converged']:
-        print(f"Convergence: atteinte (CV: {convergence_info['coefficient_variation']:.4f})")
-        print(f"Performance stable: {convergence_info['mean_performance']:.1f} ± {convergence_info['std_performance']:.1f} étapes")
+        print(f"  [SUCCÈS] Convergence: atteinte! (stabilité: {convergence_info['coefficient_variation']:.4f})")
+        print(f"  Performance stable: {convergence_info['mean_performance']:.1f} ± {convergence_info['std_performance']:.1f} étapes")
     else:
-        print("Convergence: non atteinte")
+        print("  [APPRENTISSAGE] Convergence: non atteinte - l'agent apprend encore...")
     
-    # Évaluation de la performance finale
+    # Évaluation de la performance finale avec commentaires étudiants
     if final_stats['best_steps'] <= 20:
-        print("Performance exceptionnelle!")
+        print("  [EXCELLENT] Performance exceptionnelle! L'agent a vraiment bien appris!")
     elif final_stats['best_steps'] <= 30:
-        print("Performance excellente!")
+        print("  [TRÈS BIEN] Performance excellente! Très bon apprentissage!")
     elif final_stats['best_steps'] <= 50:
-        print("Performance très bonne!")
+        print("  [BIEN] Performance très bonne! L'agent progresse bien!")
     elif final_stats['best_steps'] <= 100:
-        print("Performance bonne!")
+        print("  [CORRECT] Performance bonne! L'agent apprend encore...")
     else:
-        print("Performance en cours d'amélioration!")
+        print("  [EN COURS] Performance en cours d'amélioration... l'agent a besoin de plus d'entraînement")
     
     print("=" * 60)
     
@@ -805,7 +835,7 @@ def test_agent(
         Tuple (taux de succès, liste des scores)
     """
     print("\n" + "=" * 60)
-    print("PHASE DE TEST")
+    print("🧪 PHASE DE TEST - ÉVALUATION DE L'AGENT")
     print("=" * 60)
 
     # Sauvegarde de l'epsilon original
@@ -829,8 +859,17 @@ def test_agent(
         if success:
             success_count += 1
 
-        status = "Succès" if success else "Échec"
-        print(f"Résultat: {status} | {steps} étapes")
+        if success:
+            print(f"[SUCCÈS] Test {test_num + 1}: Succès en {steps} étapes")
+            if steps <= 20:
+                print("   -> Excellent! L'agent a vraiment appris!")
+            elif steps <= 50:
+                print("   -> Très bien! Bonne performance!")
+            else:
+                print("   -> Correct, mais peut-être optimisable...")
+        else:
+            print(f"[ÉCHEC] Test {test_num + 1}: Échec après {steps} étapes")
+            print("   -> L'agent doit encore apprendre...")
 
     # Restauration de l'epsilon
     agent.epsilon = original_epsilon
@@ -838,7 +877,7 @@ def test_agent(
     success_rate = success_count / num_tests
 
     print("\n" + "=" * 60)
-    print("RÉSULTATS DES TESTS")
+    print("[RÉSULTATS] RÉSULTATS DES TESTS")
     print("=" * 60)
     print(f"Taux de succès: {success_rate:.1%} ({success_count}/{num_tests})")
     if success_count > 0:
@@ -847,15 +886,17 @@ def test_agent(
         print(f"Score moyen: {avg_steps:.1f} étapes")
         print(f"Meilleur chemin: {best_score} étapes")
         
-        # Évaluation de la performance des tests
+        # Évaluation de la performance des tests avec commentaires étudiants
         if best_score <= 15:
-            print("Tests: performance exceptionnelle!")
+            print("[EXCELLENT] Tests: performance exceptionnelle! L'agent maîtrise parfaitement!")
         elif best_score <= 25:
-            print("Tests: performance excellente!")
+            print("[TRÈS BIEN] Tests: performance excellente! Très bon apprentissage!")
         elif best_score <= 40:
-            print("Tests: performance très bonne!")
+            print("[BIEN] Tests: performance très bonne! L'agent progresse bien!")
         else:
-            print("Tests: performance bonne!")
+            print("[CORRECT] Tests: performance bonne! L'agent apprend encore...")
+    else:
+        print("[DÉCEVANT] Aucun test réussi... l'agent a besoin de plus d'entraînement")
     print("=" * 60)
 
     return success_rate, test_results
@@ -869,7 +910,7 @@ def get_user_config() -> Dict[str, Any]:
         Dictionnaire avec la configuration
     """
     print("=" * 60)
-    print("Q-LEARNING SIMPLIFIÉ POUR DONATELLOPYZZA")
+    print("[IA] Q-LEARNING SIMPLIFIÉ POUR DONATELLOPYZZA")
     print("=" * 60)
     print("Objectif: Apprendre à naviguer vers la pizza")
     print("Méthode: Apprentissage par renforcement (Q-Learning)")
@@ -949,9 +990,10 @@ def main():
     config = get_user_config()
     agent = run_training_pipeline(config)
     
-    print("\nProgramme terminé!")
+    print("\n[TERMINÉ] Programme terminé!")
     print(f"Agent final avec {agent.get_statistics()['q_table_size']} états appris")
     print(f"Chemin optimal: {agent.get_statistics()['best_steps']} étapes")
+    print("L'agent a fini son apprentissage! [APPRENTISSAGE TERMINÉ]")
 
 
 if __name__ == "__main__":
