@@ -782,7 +782,7 @@ def train_agent(
     final_success_rate = successful_episodes / episode
     convergence_info = agent.get_convergence_info()
     
-    print(f"📈 RÉSULTATS FINAUX:")
+    print(f"RÉSULTATS FINAUX:")
     print(f"  Épisodes total: {episode}")
     print(f"  Taux de succès final: {final_success_rate:.1%}")
     print(f"  Meilleur chemin trouvé: {final_stats['best_steps']} étapes")
@@ -835,7 +835,7 @@ def test_agent(
         Tuple (taux de succès, liste des scores)
     """
     print("\n" + "=" * 60)
-    print("🧪 PHASE DE TEST - ÉVALUATION DE L'AGENT")
+    print("PHASE DE TEST - ÉVALUATION DE L'AGENT")
     print("=" * 60)
 
     # Sauvegarde de l'epsilon original
