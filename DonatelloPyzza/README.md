@@ -355,23 +355,8 @@ Ce projet est sous licence **Free for non-commercial use**.
 ## Auteurs
 
 - **Mickaël Bettinelli** - *Développement principal* - [@MilowB](https://github.com/MilowB)
-- **Contributeurs** - Voir [CONTRIBUTORS.md](CONTRIBUTORS.md)
-
-## Remerciements
-
-- **Pygame** pour l'interface graphique
-- **Communauté Python** pour les outils et bibliothèques
-- **Étudiants et enseignants** pour les retours et suggestions
-
-## Support
-
-- **Issues** : [GitHub Issues](https://github.com/oeoecbien/ai/issues)
-- **Discussions** : [GitHub Discussions](https://github.com/oeoecbien/ai/discussions)
-- **Email** : mickael.bettinelli@univ-smb.fr
+- **Contributeur** - Melih CETINKAYA - [@oeoecbien](https://github.com/oeoecbien)
 
 ---
 
 **DonatelloPyzza** - *Apprentissage par renforcement éducatif*
-
-[![GitHub stars](https://img.shields.io/github/stars/oeoecbien/ai?style=social)](https://github.com/oeoecbien/ai/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/oeoecbien/ai?style=social)](https://github.com/oeoecbien/ai/network)
