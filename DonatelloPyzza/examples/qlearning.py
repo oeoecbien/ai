@@ -47,20 +47,21 @@ def signal_handler(signum, frame):
 
 @dataclass
 class AgentConfig:
-    """Configuration de l'agent Q-Learning"""
+    """Configuration de l'agent Q-Learning avec reward shaping intelligent"""
     learning_rate: float = 0.1          # Vitesse d'apprentissage (0.1 = 10%)
     discount_factor: float = 0.9        # Importance des récompenses futures (90%)
     epsilon: float = 0.3                # Taux d'exploration initial (30%)
     epsilon_decay: float = 0.995        # Réduction de l'exploration par épisode
     epsilon_min: float = 0.01           # Exploration minimale (1%)
     convergence_window: int = 20         # Nombre d'épisodes pour détecter la convergence
-    convergence_threshold: float = 0.2   # Seuil de stabilité pour arrêter l'entraînement
+    convergence_threshold: float = 0.15  # Seuil de stabilité réduit pour convergence plus rapide
     max_steps: int = 1000               # Limite d'étapes par épisode
     random_seed: Optional[int] = None   # Graine pour reproductibilité
-    min_success_rate: float = 0.6       # Taux de succès minimum (60%)
+    min_success_rate: float = 0.5       # Taux de succès minimum réduit (50%)
     q_value_min: float = -1000.0        # Valeur Q minimum
     q_value_max: float = 1000.0          # Valeur Q maximum
     pure_qlearning: bool = False         # Mode Q-Learning pur (cours académique)
+    intelligent_shaping: bool = True     # Mode reward shaping intelligent
 
 
 StateKey = Tuple[Tuple[int, int], int, bool]
@@ -80,21 +81,40 @@ class State:
 
 
 class RewardSystem:
-    """Système de récompenses pour guider l'apprentissage"""
-    def __init__(self, step_penalty: float = -1.0, wall_penalty: float = -5.0, 
-                 pizza_reward: float = 100.0, touch_cost: float = -0.5, 
-                 exploration_bonus: float = 0.5, pure_qlearning: bool = False):
-        self.step_penalty = step_penalty        # Pénalité pour chaque étape (encourage l'efficacité)
-        self.wall_penalty = wall_penalty        # Pénalité pour toucher un mur
+    """Système de récompenses intelligent pour guider l'apprentissage"""
+    def __init__(self, step_penalty: float = -0.1, wall_penalty: float = -2.0, 
+                 pizza_reward: float = 100.0, touch_cost: float = -0.2, 
+                 exploration_bonus: float = 0.5, pure_qlearning: bool = False,
+                 intelligent_shaping: bool = True):
+        self.step_penalty = step_penalty        # Pénalité réduite pour chaque étape
+        self.wall_penalty = wall_penalty        # Pénalité réduite pour toucher un mur
         self.pizza_reward = pizza_reward        # Récompense pour trouver la pizza
-        self.touch_cost = touch_cost            # Coût de l'action "toucher"
+        self.touch_cost = touch_cost            # Coût réduit de l'action "toucher"
         self.exploration_bonus = exploration_bonus  # Bonus pour explorer de nouveaux endroits
         self.pure_qlearning = pure_qlearning   # Mode académique (récompenses simples)
+        self.intelligent_shaping = intelligent_shaping  # Mode reward shaping intelligent
         self.visit_counts = defaultdict(int)    # Compteur de visites par état
+        
+        # Système de normalisation des récompenses
+        self.reward_history = deque(maxlen=100)  # Historique des récompenses
+        self.reward_mean = 0.0
+        self.reward_std = 1.0
+        
+        # Système de curiosité
+        self.state_novelty = defaultdict(int)   # Nouveauté des états
+        self.curiosity_bonus = 0.3              # Bonus de curiosité
+        
+        # Système de guidance directionnelle
+        self.previous_distance = None           # Distance précédente à la pizza
+        self.pizza_position = None              # Position de la pizza (si connue)
+        
+        # Système de reward shaping progressif
+        self.episode_count = 0                  # Compteur d'épisodes
+        self.learning_phase = "exploration"     # Phase d'apprentissage
     
     def calculate_reward(self, feedback: Feedback, current_state: State, 
                         next_state: State, action: Action) -> float:
-        """Calcule la récompense selon le mode choisi"""
+        """Calcule la récompense selon le mode choisi avec reward shaping intelligent"""
         if self.pure_qlearning:
             # Mode académique : récompenses simples (0 ou 1)
             if feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
@@ -102,23 +122,118 @@ class RewardSystem:
             else:
                 return 0.0  # Pas de récompense pour les autres actions
         else:
-            # Mode avancé : récompenses détaillées pour guider l'apprentissage
-            reward = self.step_penalty  # Pénalité de base pour chaque étape
+            # Mode avancé avec reward shaping intelligent
+            reward = self._calculate_base_reward(feedback, action)
             
-            if feedback == Feedback.COLLISION or feedback == Feedback.TOUCHED_WALL:
-                reward += self.wall_penalty  # Pénalité pour toucher un mur
-            elif feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
-                reward += self.pizza_reward  # Grosse récompense pour la pizza
+            if self.intelligent_shaping:
+                # Guidance directionnelle basée sur la distance
+                reward += self._calculate_distance_guidance(current_state, next_state)
+                
+                # Bonus de curiosité pour l'exploration
+                reward += self._calculate_curiosity_bonus(next_state)
+                
+                # Reward shaping progressif selon la phase
+                reward = self._apply_progressive_shaping(reward)
             
-            if action == Action.TOUCH:
-                reward += self.touch_cost  # Coût de l'action "toucher"
-            
-            # Bonus d'exploration : encourage à visiter de nouveaux endroits
-            state_key = next_state.key()
-            self.visit_counts[state_key] += 1
-            reward += self.exploration_bonus / (self.visit_counts[state_key] ** 0.5)
+            # Normalisation des récompenses
+            reward = self._normalize_reward(reward)
             
             return reward
+    
+    def _calculate_base_reward(self, feedback: Feedback, action: Action) -> float:
+        """Calcule la récompense de base"""
+        reward = self.step_penalty  # Pénalité réduite pour chaque étape
+        
+        if feedback == Feedback.COLLISION or feedback == Feedback.TOUCHED_WALL:
+            reward += self.wall_penalty  # Pénalité réduite pour toucher un mur
+        elif feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
+            reward += self.pizza_reward  # Grosse récompense pour la pizza
+        
+        if action == Action.TOUCH:
+            reward += self.touch_cost  # Coût réduit de l'action "toucher"
+        
+        return reward
+    
+    def _calculate_distance_guidance(self, current_state: State, next_state: State) -> float:
+        """Calcule la guidance directionnelle basée sur la distance à la pizza"""
+        if self.pizza_position is None:
+            return 0.0  # Pas de guidance si position pizza inconnue
+        
+        # Calculer les distances
+        current_distance = self._euclidean_distance(current_state.position, self.pizza_position)
+        next_distance = self._euclidean_distance(next_state.position, self.pizza_position)
+        
+        # Guidance basée sur le progrès
+        if self.previous_distance is not None:
+            progress = self.previous_distance - next_distance
+            guidance_reward = progress * 2.0  # Multiplier pour plus d'impact
+        else:
+            guidance_reward = 0.0
+        
+        # Mettre à jour la distance précédente
+        self.previous_distance = current_distance
+        
+        return guidance_reward
+    
+    def _calculate_curiosity_bonus(self, next_state: State) -> float:
+        """Calcule le bonus de curiosité pour encourager l'exploration"""
+        state_key = next_state.key()
+        self.state_novelty[state_key] += 1
+        
+        # Bonus de curiosité inversement proportionnel à la fréquence de visite
+        novelty = 1.0 / (self.state_novelty[state_key] ** 0.5)
+        curiosity_reward = novelty * self.curiosity_bonus
+        
+        return curiosity_reward
+    
+    def _apply_progressive_shaping(self, reward: float) -> float:
+        """Applique le reward shaping progressif selon la phase d'apprentissage"""
+        if self.learning_phase == "exploration":
+            # Phase d'exploration : plus de guidance, moins de pénalités
+            return reward * 1.5
+        elif self.learning_phase == "learning":
+            # Phase d'apprentissage : équilibre
+            return reward
+        else:  # "optimization"
+            # Phase d'optimisation : focus sur l'efficacité
+            return reward * 0.8
+    
+    def _normalize_reward(self, reward: float) -> float:
+        """Normalise les récompenses pour stabiliser l'apprentissage"""
+        # Ajouter à l'historique
+        self.reward_history.append(reward)
+        
+        # Mettre à jour les statistiques
+        if len(self.reward_history) > 10:
+            self.reward_mean = sum(self.reward_history) / len(self.reward_history)
+            variance = sum((r - self.reward_mean) ** 2 for r in self.reward_history) / len(self.reward_history)
+            self.reward_std = max(variance ** 0.5, 1e-6)  # Éviter division par zéro
+        
+        # Normalisation Z-score
+        if self.reward_std > 0:
+            normalized_reward = (reward - self.reward_mean) / self.reward_std
+            return normalized_reward
+        else:
+            return reward
+    
+    def _euclidean_distance(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> float:
+        """Calcule la distance euclidienne entre deux positions"""
+        return ((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2) ** 0.5
+    
+    def update_learning_phase(self, success_rate: float, episode_count: int):
+        """Met à jour la phase d'apprentissage selon les performances"""
+        self.episode_count = episode_count
+        
+        if episode_count < 50 or success_rate < 0.1:
+            self.learning_phase = "exploration"
+        elif success_rate < 0.6:
+            self.learning_phase = "learning"
+        else:
+            self.learning_phase = "optimization"
+    
+    def set_pizza_position(self, position: Tuple[int, int]):
+        """Définit la position de la pizza pour la guidance directionnelle"""
+        self.pizza_position = position
 
 
 class QTable:
@@ -401,7 +516,10 @@ class QLearningAgent:
         
         # Initialisation des composants
         self.q_table = QTable(self.config)  # Table d'apprentissage
-        self.reward_system = RewardSystem(pure_qlearning=self.config.pure_qlearning)  # Système de récompenses
+        self.reward_system = RewardSystem(
+            pure_qlearning=self.config.pure_qlearning,
+            intelligent_shaping=self.config.intelligent_shaping
+        )  # Système de récompenses intelligent
         self.exploration_strategy = ExplorationStrategy(self.config)  # Stratégie d'exploration
         self.convergence_detector = ConvergenceDetector(self.config)  # Détection de convergence
         self.performance_tracker = PerformanceTracker()  # Suivi des performances
@@ -416,6 +534,10 @@ class QLearningAgent:
         
         # Commencer un nouvel épisode
         current_state = env_adapter.reset()
+        
+        # Détecter automatiquement la position de la pizza si pas encore fait
+        if self.reward_system.pizza_position is None:
+            self._detect_pizza_position(env_adapter)
         
         # Boucle principale de l'épisode
         while steps < self.max_steps:
@@ -468,10 +590,40 @@ class QLearningAgent:
         
         return total_reward, steps, success
     
+    def _detect_pizza_position(self, env_adapter: EnvironmentAdapter):
+        """Détecte automatiquement la position de la pizza dans l'environnement"""
+        try:
+            # Essayer de récupérer la position de la pizza depuis l'environnement
+            if hasattr(env_adapter.game, 'getPizzaPosition'):
+                pizza_pos = env_adapter.game.getPizzaPosition()
+                if pizza_pos:
+                    self.reward_system.set_pizza_position(pizza_pos)
+                    print(f"[INFO] Position de la pizza détectée: {pizza_pos}")
+            else:
+                # Fallback: chercher la pizza en explorant
+                self._find_pizza_by_exploration(env_adapter)
+        except Exception as e:
+            print(f"[WARNING] Impossible de détecter la position de la pizza: {e}")
+    
+    def _find_pizza_by_exploration(self, env_adapter: EnvironmentAdapter):
+        """Trouve la pizza en explorant l'environnement"""
+        print("[INFO] Exploration pour trouver la pizza...")
+        # Cette méthode pourrait être implémentée pour explorer l'environnement
+        # et détecter la position de la pizza automatiquement
+        pass
+    
     def _update_statistics(self, total_reward: float, steps: int, success: bool):
         self.performance_tracker.update_episode(steps, success, total_reward)
         self.convergence_detector.update(steps, success, total_reward)
         self.exploration_strategy.decay_epsilon()
+        
+        # Mettre à jour la phase d'apprentissage du reward system
+        success_rate = self.performance_tracker.episode_count
+        if success_rate > 0:
+            recent_successes = sum(1 for _, _, s in self.performance_tracker.episode_results[-20:] if s)
+            recent_rate = recent_successes / min(20, len(self.performance_tracker.episode_results))
+            self.reward_system.update_learning_phase(recent_rate, self.performance_tracker.episode_count)
+        
         self.performance_tracker.clear_episode_data()
     
     def check_convergence(self) -> bool:
@@ -576,6 +728,12 @@ def train_agent(
             print(f"  Epsilon (exploration): {stats['epsilon']:.3f}")
             print(f"  États appris: {stats['q_table_size']}")
             
+            # Afficher les informations sur le reward shaping intelligent
+            if agent.config.intelligent_shaping and not agent.config.pure_qlearning:
+                print(f"  Phase d'apprentissage: {agent.reward_system.learning_phase}")
+                print(f"  Position pizza: {agent.reward_system.pizza_position if agent.reward_system.pizza_position else 'Non détectée'}")
+                print(f"  Récompenses normalisées: {len(agent.reward_system.reward_history)} échantillons")
+            
             # Vérifier la convergence après chaque analyse
             if agent.check_convergence():
                 print(f"\n[CONVERGENCE] Performance stable détectée après {episode} épisodes!")
@@ -655,11 +813,13 @@ def get_user_config() -> Dict[str, Any]:
             epsilon = float(input("Epsilon initial [défaut: 0.3]: ") or "0.3")
             max_episodes = int(input("Max épisodes [défaut: 2000]: ") or "2000")
             pure_mode = input("Mode Q-Learning pur (sans reward shaping) ? (o/n) [défaut: n]: ").lower() == 'o'
+            intelligent_mode = input("Mode reward shaping intelligent ? (o/n) [défaut: o]: ").lower() != 'n'
             
             config = AgentConfig(
                 learning_rate=learning_rate,
                 epsilon=epsilon,
-                pure_qlearning=pure_mode
+                pure_qlearning=pure_mode,
+                intelligent_shaping=intelligent_mode
             )
         else:
             config = AgentConfig()
