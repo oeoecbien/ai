@@ -6,7 +6,7 @@ import signal
 import logging
 from typing import Dict, Tuple, List, Any, Optional
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Configuration du chemin d'accès au module parent
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -42,174 +42,179 @@ class AgentConfig:
     convergence_threshold: float = 0.05
     max_steps: int = 1000
     random_seed: Optional[int] = None
-    systematic_exploration_episodes: int = 50
-    min_adaptive_steps: int = 50
-    adaptive_margin: float = 0.1
+    min_success_rate: float = 0.8
     q_value_min: float = -1000.0
     q_value_max: float = 1000.0
-    min_success_rate: float = 0.8
 
 
-@dataclass
+# Clé d'état MDP utilisée pour la Q-table
+StateKey = Tuple[Tuple[int, int], int, bool]
+
+@dataclass(frozen=True)
 class State:
-    """Représentation enrichie d'un état"""
+    """État MDP immuable pour la Q-table"""
     position: Tuple[int, int]
     orientation: int
     has_touched_wall: bool = False
+    
+    # Contexte non-markovien (non utilisé pour la Q-table)
     steps_since_pizza: int = 0
-    previous_actions: List[Action] = None
+    previous_actions: Tuple[int, ...] = field(default_factory=tuple, compare=False, hash=False)
     
-    def __post_init__(self):
-        if self.previous_actions is None:
-            self.previous_actions = []
-    
-    def __hash__(self):
-        return hash((self.position, self.orientation, self.has_touched_wall))
-    
-    def __eq__(self, other):
-        if not isinstance(other, State):
-            return False
-        return (self.position == other.position and 
-                self.orientation == other.orientation and
-                self.has_touched_wall == other.has_touched_wall)
+    def key(self) -> StateKey:
+        """Retourne la clé d'état utilisée pour la Q-table"""
+        return (self.position, self.orientation, self.has_touched_wall)
 
 
 class RewardSystem:
-    """Système de récompenses sophistiqué"""
+    """Système de récompenses markovien avec bonus d'exploration"""
     
-    def __init__(self):
-        self.base_rewards = {
-            'pizza_found': 100.0,
-            'pizza_touched': 50.0,
-            'collision': -10.0,
-            'step': -2.0,
-            'wall_touched': -5.0,
-            'new_state': 3.0,
-            'redundant_action': -3.0
-        }
-        self.bonus_multipliers = {
-            'efficiency': 1.5,
-            'exploration': 2.0,
-            'short_path': 2.0
-        }
+    def __init__(self, step_penalty: float = -1.0, wall_penalty: float = -5.0, 
+                 pizza_reward: float = 100.0, touch_cost: float = -0.5, 
+                 exploration_bonus: float = 0.5):
+        self.step_penalty = step_penalty
+        self.wall_penalty = wall_penalty
+        self.pizza_reward = pizza_reward
+        self.touch_cost = touch_cost
+        self.exploration_bonus = exploration_bonus
+        self.visit_counts = defaultdict(int)
     
     def calculate_reward(self, feedback: Feedback, current_state: State, 
-                        next_state: State, action: Action, 
-                        visited_states: set, action_history: List[Action]) -> float:
-        """Calcule la récompense avec logique sophistiquée"""
-        base_reward = 0.0
+                        next_state: State, action: Action) -> float:
+        """Calcule la récompense markovienne avec bonus d'exploration"""
+        # Récompense de base markovienne
+        reward = self.step_penalty
         
-        # Récompense de base selon le feedback
-        if feedback == Feedback.MOVED_ON_PIZZA:
-            base_reward = self.base_rewards['pizza_found']
-        elif feedback == Feedback.TOUCHED_PIZZA:
-            base_reward = self.base_rewards['pizza_touched']
-        elif feedback == Feedback.COLLISION:
-            base_reward = self.base_rewards['collision']
-        elif feedback == Feedback.TOUCHED_WALL:
-            base_reward = self.base_rewards['wall_touched']
-        else:
-            base_reward = self.base_rewards['step']
+        if feedback == Feedback.COLLISION or feedback == Feedback.TOUCHED_WALL:
+            reward += self.wall_penalty
+        elif feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
+            reward += self.pizza_reward
         
-        # Bonus pour exploration de nouveaux états
-        if next_state not in visited_states:
-            base_reward += self.base_rewards['new_state'] * self.bonus_multipliers['exploration']
-            visited_states.add(next_state)
+        if action == Action.TOUCH:
+            reward += self.touch_cost
         
-        # Pénalités pour actions redondantes
-        if len(action_history) >= 2:
-            if self._detect_redundant_actions(action_history):
-                base_reward += self.base_rewards['redundant_action']
+        # Bonus d'exploration basé sur le comptage (count-based)
+        state_key = next_state.key()
+        self.visit_counts[state_key] += 1
+        reward += self.exploration_bonus / (self.visit_counts[state_key] ** 0.5)
         
-        # Bonus d'efficacité pour chemins courts
-        if hasattr(next_state, 'steps_since_pizza') and next_state.steps_since_pizza < 20:
-            base_reward *= self.bonus_multipliers['efficiency']
-        
-        return base_reward
-    
-    def _detect_redundant_actions(self, action_history: List[Action]) -> bool:
-        """Détecte les actions redondantes"""
-        if len(action_history) < 2:
-            return False
-        
-        # Détection de tours alternés (gauche-droite)
-        if (action_history[-2] == Action.TURN_RIGHT and action_history[-1] == Action.TURN_LEFT) or \
-           (action_history[-2] == Action.TURN_LEFT and action_history[-1] == Action.TURN_RIGHT):
-            return True
-        
-        # Détection de répétitions (3 fois la même action)
-        if len(action_history) >= 3:
-            if action_history[-3] == action_history[-2] == action_history[-1]:
-                return True
-        
-        return False
+        return reward
 
 
-class ConvergenceDetector:
-    """Détecteur de convergence intelligent"""
+class QTable:
+    """Q-table avec clés d'état cohérentes"""
     
     def __init__(self, config: AgentConfig):
         self.config = config
-        self.performance_history = []
+        self.table: Dict[StateKey, Dict[int, float]] = defaultdict(dict)
+    
+    def get(self, state: State, action: Action) -> float:
+        """Récupère la valeur Q pour un état-action"""
+        return self.table[state.key()].get(action.value, 0.0)
+    
+    def update(self, state: State, action: Action, reward: float, next_state: State):
+        """Met à jour la valeur Q selon la formule TD correcte"""
+        q_sa = self.get(state, action)
+        next_qs = self.table.get(next_state.key(), {})
+        max_next = max(next_qs.values()) if next_qs else 0.0
+        
+        # Formule TD: Q(s,a) ← (1-α)Q(s,a) + α[r + γ max Q(s',a')]
+        target = reward + self.config.discount_factor * max_next
+        new_q = (1 - self.config.learning_rate) * q_sa + self.config.learning_rate * target
+        
+        # Clipping pour éviter les valeurs aberrantes
+        new_q = max(self.config.q_value_min, min(self.config.q_value_max, new_q))
+        self.table[state.key()][action.value] = new_q
+    
+    def best_action(self, state: State) -> Action:
+        """Retourne la meilleure action pour un état"""
+        qdict = self.table.get(state.key(), {})
+        if not qdict:
+            return random.choice([Action.MOVE_FORWARD, Action.TURN_LEFT, Action.TURN_RIGHT, Action.TOUCH])
+        
+        max_q = max(qdict.values())
+        best_actions = [Action(k) for k, v in qdict.items() if v == max_q]
+        return random.choice(best_actions)
+    
+    def size(self) -> int:
+        """Retourne la taille de la Q-table"""
+        return len(self.table)
+
+
+class ExplorationStrategy:
+    """Stratégie d'exploration epsilon-greedy"""
+    
+    def __init__(self, config: AgentConfig):
+        self.config = config
+        self.epsilon = config.epsilon
+        self.epsilon_min = config.epsilon_min
+        self.epsilon_decay = config.epsilon_decay
+    
+    def choose_action(self, state: State, q_table: QTable) -> Action:
+        """Choisit une action selon la stratégie epsilon-greedy"""
+        if random.random() < self.epsilon:
+            # Exploration: action aléatoire
+            return random.choice([Action.MOVE_FORWARD, Action.TURN_LEFT, Action.TURN_RIGHT, Action.TOUCH])
+        else:
+            # Exploitation: meilleure action selon Q-table
+            return q_table.best_action(state)
+    
+    def decay_epsilon(self):
+        """Réduit le taux d'exploration"""
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+    
+    def get_epsilon(self) -> float:
+        """Retourne la valeur actuelle d'epsilon"""
+        return self.epsilon
+
+
+class ConvergenceDetector:
+    """Détecteur de convergence avec API claire"""
+    
+    def __init__(self, config: AgentConfig):
+        self.config = config
+        self.history = deque(maxlen=config.convergence_window)
         self.converged = False
     
-    def update_performance(self, steps: int, success: bool, reward: float):
+    def update(self, steps: int, success: bool, reward: float):
         """Met à jour l'historique des performances"""
-        self.performance_history.append({
-            'steps': steps,
-            'success': success,
-            'reward': reward
-        })
-        
-        # Garder seulement les dernières performances
-        if len(self.performance_history) > self.config.convergence_window * 2:
-            self.performance_history = self.performance_history[-self.config.convergence_window:]
+        self.history.append((steps, success, reward))
     
-    def is_converged(self, episode_count: int, epsilon: float, 
-                    visited_states: int) -> bool:
-        """Vérifie si l'agent a convergé"""
-        if len(self.performance_history) < self.config.convergence_window:
+    def is_converged(self, epsilon: float) -> bool:
+        """Vérifie si l'agent a convergé avec critères explicites"""
+        if len(self.history) < self.config.convergence_window:
             return False
         
-        recent_results = self.performance_history[-self.config.convergence_window:]
+        # Extraction des données
+        steps = [s for s, _, _ in self.history]
+        successes = [1 if ok else 0 for _, ok, _ in self.history]
         
         # Calcul des statistiques
-        steps = [r['steps'] for r in recent_results]
-        successes = [r['success'] for r in recent_results]
-        
         mean_steps = sum(steps) / len(steps)
         success_rate = sum(successes) / len(successes)
-        
-        # Coefficient de variation
         variance = sum((s - mean_steps) ** 2 for s in steps) / len(steps)
         std_dev = variance ** 0.5
         cv = std_dev / mean_steps if mean_steps > 0 else float('inf')
         
-        # Critères de convergence
-        exploration_sufficient = visited_states > 50 or episode_count > 300
+        # Critères de convergence explicites
+        epsilon_low = epsilon <= self.config.epsilon_min + 1e-6
+        success_high = success_rate >= self.config.min_success_rate
+        variance_low = cv <= self.config.convergence_threshold
         
-        convergence_criteria = [
-            cv < self.config.convergence_threshold,
-            epsilon <= self.config.epsilon_min,
-            success_rate >= self.config.min_success_rate,
-            exploration_sufficient
-        ]
-        
-        self.converged = all(convergence_criteria)
+        self.converged = epsilon_low and success_high and variance_low
         return self.converged
     
     def get_convergence_info(self) -> Dict[str, Any]:
         """Retourne les informations de convergence"""
-        if len(self.performance_history) < self.config.convergence_window:
+        if len(self.history) < self.config.convergence_window:
             return {
                 'converged': False,
-                'episodes_needed': self.config.convergence_window - len(self.performance_history),
+                'episodes_needed': self.config.convergence_window - len(self.history),
                 'reason': 'Pas assez d\'épisodes'
             }
         
-        recent_results = self.performance_history[-self.config.convergence_window:]
-        steps = [r['steps'] for r in recent_results]
-        successes = [r['success'] for r in recent_results]
+        steps = [s for s, _, _ in self.history]
+        successes = [1 if ok else 0 for _, ok, _ in self.history]
         
         mean_steps = sum(steps) / len(steps)
         success_rate = sum(successes) / len(successes)
@@ -224,7 +229,7 @@ class ConvergenceDetector:
             'mean_performance': mean_steps,
             'std_performance': std_dev,
             'success_rate': success_rate,
-            'episodes_analyzed': len(recent_results)
+            'episodes_analyzed': len(self.history)
         }
 
 
@@ -270,115 +275,54 @@ class PerformanceTracker:
         self.position_history.clear()
 
 
-class QTable:
-    """Gestionnaire de la Q-table avec optimisations"""
+class EnvironmentAdapter:
+    """Adaptateur pour isoler les appels à RLGame"""
     
-    def __init__(self, config: AgentConfig):
-        self.config = config
-        self.q_table: Dict[State, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    def __init__(self, environment_name: str, show_gui: bool = True):
+        self.environment_name = environment_name
+        self.show_gui = show_gui
+        self.game = None
+        self.turtle = None
     
-    def get_q_value(self, state: State, action: Action) -> float:
-        """Récupère la valeur Q pour un état-action"""
-        return self.q_table[state][int(action.value)]
-    
-    def update_q_value(self, state: State, action: Action, reward: float, next_state: State):
-        """Met à jour la valeur Q selon la formule TD"""
-        action_key = int(action.value)
-        current_q = self.q_table[state][action_key]
+    def reset(self) -> State:
+        """Réinitialise l'environnement et retourne l'état initial"""
+        self.game = RLGame(self.environment_name, gui=self.show_gui)
+        self.turtle = self.game.start()
         
-        # Calcul de la valeur Q maximale du prochain état
-        if next_state in self.q_table and self.q_table[next_state]:
-            max_next_q = max(self.q_table[next_state].values())
-        else:
-            max_next_q = 0.0
+        # TODO: Adapter selon les vraies méthodes de RLGame
+        position = self.game.getTurtlePosition(self.turtle)
+        orientation = self.game.getTurtleOrientation(self.turtle)
         
-        # Formule TD
-        td_target = reward + self.config.discount_factor * max_next_q
-        td_error = td_target - current_q
-        new_q = current_q + self.config.learning_rate * td_error
+        return State(position=position, orientation=orientation)
+    
+    def step(self, action: Action) -> Tuple[State, Feedback, bool]:
+        """Exécute une action et retourne le nouvel état, feedback et done"""
+        # TODO: Adapter selon les vraies méthodes de RLGame
+        feedback, _ = self.turtle.execute(action)
         
-        # Validation et bornage des valeurs
-        if not isinstance(new_q, (int, float)) or new_q != new_q:
-            new_q = 0.0
-        elif new_q == float('inf') or new_q == float('-inf'):
-            new_q = 0.0
-        else:
-            new_q = max(self.config.q_value_min, min(self.config.q_value_max, new_q))
+        new_position = self.game.getTurtlePosition(self.turtle)
+        new_orientation = self.game.getTurtleOrientation(self.turtle)
+        has_touched_wall = feedback == Feedback.TOUCHED_WALL
         
-        self.q_table[state][action_key] = new_q
-    
-    def get_best_action(self, state: State) -> Action:
-        """Retourne la meilleure action pour un état"""
-        if state in self.q_table and self.q_table[state]:
-            qdict = self.q_table[state]
-            max_q = max(qdict.values())
-            best_actions = [k for k, v in qdict.items() if v == max_q]
-            return Action(random.choice(best_actions))
-        return random.choice([Action.MOVE_FORWARD, Action.TURN_LEFT, Action.TURN_RIGHT, Action.TOUCH])
-    
-    def get_size(self) -> int:
-        """Retourne la taille de la Q-table"""
-        return len(self.q_table)
-
-
-class ExplorationStrategy:
-    """Stratégie d'exploration intelligente"""
-    
-    def __init__(self, config: AgentConfig):
-        self.config = config
-        self.epsilon = config.epsilon
-        self.exploration_sequence = [
-            Action.TOUCH, Action.TURN_LEFT, Action.TOUCH, Action.TURN_LEFT,
-            Action.TOUCH, Action.TURN_LEFT, Action.TOUCH, Action.TURN_LEFT,
-            Action.MOVE_FORWARD
-        ]
-        self.exploration_index = 0
-    
-    def choose_action(self, state: State, q_table: QTable, 
-                     visited_states: set, episode_count: int) -> Action:
-        """Choisit une action selon la stratégie d'exploration"""
-        # Exploration systématique en début d'apprentissage
-        if episode_count < self.config.systematic_exploration_episodes:
-            return self._systematic_exploration(state, visited_states)
+        next_state = State(
+            position=new_position,
+            orientation=new_orientation,
+            has_touched_wall=has_touched_wall
+        )
         
-        # Epsilon-greedy classique
-        return self._epsilon_greedy(state, q_table)
-    
-    def _systematic_exploration(self, state: State, visited_states: set) -> Action:
-        """Exploration systématique pour nouveaux états"""
-        if state not in visited_states:
-            if self.exploration_index < len(self.exploration_sequence):
-                action = self.exploration_sequence[self.exploration_index]
-                self.exploration_index += 1
-                return action
-            else:
-                self.exploration_index = 0
-                return Action.MOVE_FORWARD
+        # TODO: Adapter selon les vraies méthodes de RLGame
+        done = self.game.isWon(prnt=False)
         
-        return self._epsilon_greedy(state, None)
+        return next_state, feedback, done
     
-    def _epsilon_greedy(self, state: State, q_table: QTable) -> Action:
-        """Sélection epsilon-greedy"""
-        if random.random() < self.epsilon:
-            return random.choice([Action.MOVE_FORWARD, Action.TURN_LEFT, Action.TURN_RIGHT, Action.TOUCH])
-        
-        if q_table and state in q_table.q_table and q_table.q_table[state]:
-            return q_table.get_best_action(state)
-        
-        return random.choice([Action.MOVE_FORWARD, Action.TURN_LEFT, Action.TURN_RIGHT, Action.TOUCH])
-    
-    def decay_epsilon(self):
-        """Réduit le taux d'exploration"""
-        if self.epsilon > self.config.epsilon_min:
-            self.epsilon = max(self.config.epsilon_min, self.epsilon * self.config.epsilon_decay)
-    
-    def get_epsilon(self) -> float:
-        """Retourne la valeur actuelle d'epsilon"""
-        return self.epsilon
+    def is_won(self) -> bool:
+        """Vérifie si l'objectif est atteint"""
+        # TODO: Adapter selon les vraies méthodes de RLGame
+        return self.game.isWon(prnt=False) if self.game else False
 
 
 class QLearningAgent:
-    """Agent Q-Learning refactorisé pour DonatelloPyzza"""
+    """Agent Q-Learning avec architecture modulaire"""
     
     def __init__(self, config: AgentConfig = None):
         """Initialise l'agent Q-Learning avec la nouvelle architecture modulaire"""
@@ -397,7 +341,6 @@ class QLearningAgent:
         
         # État adaptatif
         self.max_steps = self.config.max_steps
-        self.original_max_steps = self.config.max_steps
         
         # Configuration du logging
         self._setup_logging()
@@ -413,241 +356,103 @@ class QLearningAgent:
             ]
         )
         self.logger = logging.getLogger(__name__)
-
-    def get_state(self, position: Tuple[int, int], orientation: int, 
-                  has_touched_wall: bool = False, steps_since_pizza: int = 0) -> State:
-        """Génère un état enrichi"""
-        return State(
-            position=position,
-            orientation=orientation,
-            has_touched_wall=has_touched_wall,
-            steps_since_pizza=steps_since_pizza,
-            previous_actions=list(self.performance_tracker.action_history)
-        )
-
-    def calculate_reward(self, feedback: Feedback, current_state: State, 
-                        next_state: State, action: Action) -> float:
-        """Calcule la récompense avec le système sophistiqué"""
-        return self.reward_system.calculate_reward(
-            feedback, current_state, next_state, action,
-            self.performance_tracker.visited_states,
-            list(self.performance_tracker.action_history)
-        )
-
-    def detect_loop(self, position: Tuple[int, int]) -> bool:
-        """Détecte si l'agent tourne en rond"""
-        self.performance_tracker.position_history.append(position)
+    
+    def train_episode(self, env_adapter: EnvironmentAdapter, verbose: bool = True) -> Tuple[float, int, bool]:
+        """Exécute un épisode d'entraînement"""
+        total_reward = 0.0
+        steps = 0
+        success = False
         
-        if len(self.performance_tracker.position_history) >= 10:
-            recent_positions = list(self.performance_tracker.position_history)[-10:]
-            position_counts = {}
-            for pos in recent_positions:
-                position_counts[pos] = position_counts.get(pos, 0) + 1
-            return max(position_counts.values()) > 3
+        # État initial
+        current_state = env_adapter.reset()
         
-        return False
-
-    def adjust_max_steps_for_loops(self, current_steps: int) -> int:
-        """Ajuste la limite d'étapes si l'agent tourne en rond"""
-        if current_steps > 50 and self.detect_loop(self.performance_tracker.position_history[-1] if self.performance_tracker.position_history else (0, 0)):
-            return min(current_steps + 20, self.max_steps)
-        return self.max_steps
-
-    def choose_action(self, state: State) -> Action:
-        """Sélection d'action intelligente avec les composants modulaires"""
-        return self.exploration_strategy.choose_action(
-            state, self.q_table, 
-            self.performance_tracker.visited_states,
-            self.performance_tracker.episode_count
-        )
-
-    def update_q_value(self, state: State, action: Action, reward: float, next_state: State):
-        """Met à jour la Q-table avec le composant modulaire"""
-        self.q_table.update_q_value(state, action, reward, next_state)
-
-    def update_adaptive_episode_length(self, steps: int, success: bool):
-        """Met à jour la limite d'épisodes avec logique adaptative"""
-        if success:
-            if steps < self.performance_tracker.best_successful_steps:
-                self.performance_tracker.best_successful_steps = steps
-                new_max_steps = max(int(steps * 2.0), self.config.min_adaptive_steps)
-                if self.performance_tracker.episode_count > 100:
-                    self.max_steps = new_max_steps
+        while steps < self.max_steps:
+            steps += 1
             
-            self.performance_tracker.adaptive_steps_history.append(steps)
+            # Sélection d'action
+            action = self.exploration_strategy.choose_action(current_state, self.q_table)
             
-            if len(self.performance_tracker.adaptive_steps_history) >= 10 and self.performance_tracker.episode_count > 200:
-                recent_avg = sum(list(self.performance_tracker.adaptive_steps_history)[-10:]) / 10
-                if recent_avg < self.max_steps * 0.6:
-                    new_limit = max(int(recent_avg * 1.5), self.config.min_adaptive_steps)
-                    if new_limit < self.max_steps:
-                        self.max_steps = new_limit
-        else:
-            if self.performance_tracker.episode_count < 50:
-                self.max_steps = min(self.max_steps * 1.1, 2000)
-            elif self.performance_tracker.episode_count < 200:
-                self.max_steps = min(self.max_steps * 1.05, 1500)
-
-    def decay_epsilon(self):
-        """Réduit le taux d'exploration"""
-        self.exploration_strategy.decay_epsilon()
-
-    def check_convergence(self) -> bool:
-        """Vérifie la convergence avec le détecteur modulaire"""
-        return self.convergence_detector.is_converged(
-            self.performance_tracker.episode_count,
-            self.exploration_strategy.get_epsilon(),
-            len(self.performance_tracker.visited_states)
-        )
-
-    def _execute_step(self, game: RLGame, turtle, current_state: State, steps: int, verbose: bool) -> Tuple[float, State, bool]:
-        """Exécute un pas d'apprentissage avec les composants modulaires"""
-        action = self.choose_action(current_state)
-        feedback, _ = turtle.execute(action)
-
-        new_position = game.getTurtlePosition(turtle)
-        new_orientation = game.getTurtleOrientation(turtle)
-        
-        # Mise à jour de l'historique des actions
-        self.performance_tracker.action_history.append(action)
-        
-        # Création du nouvel état enrichi
-        has_touched_wall = feedback == Feedback.TOUCHED_WALL
-        next_state = self.get_state(new_position, new_orientation, has_touched_wall, steps)
-
-        reward = self.calculate_reward(feedback, current_state, next_state, action)
-        
-        # Détection de boucles pour timeout intelligent
-        is_looping = self.detect_loop(new_position)
-        if is_looping:
-            reward += self.reward_system.base_rewards['redundant_action'] * 2
-
-        self.update_q_value(current_state, action, reward, next_state)
-
-        if verbose:
-            action_desc_map = {
-                'MOVE_FORWARD': "avance",
-                'TURN_LEFT': "tourne à gauche", 
-                'TURN_RIGHT': "tourne à droite",
-                'TOUCH': "touche"
-            }
-            feedback_desc_map = {
-                'MOVED_ON_PIZZA': "PIZZA TROUVÉE!",
-                'TOUCHED_PIZZA': "a touché la pizza",
-                'COLLISION': "collision avec un mur",
-                'TOUCHED_WALL': "a touché un mur",
-                'MOVED': "s'est déplacé"
-            }
-            action_desc = action_desc_map.get(action.name, action.name)
-            feedback_desc = feedback_desc_map.get(feedback.name, feedback.name)
+            # Exécution de l'action
+            next_state, feedback, done = env_adapter.step(action)
             
-            print(f"Episode {self.performance_tracker.episode_count + 1}, étape {steps}: {action_desc} -> "
-                  f"position {new_position}, récompense {reward:.1f}, {feedback_desc}")
-
-        return reward, next_state, game.isWon(prnt=False)
-
+            # Calcul de la récompense
+            reward = self.reward_system.calculate_reward(feedback, current_state, next_state, action)
+            
+            # Mise à jour de la Q-table
+            self.q_table.update(current_state, action, reward, next_state)
+            
+            # Mise à jour des statistiques
+            self.performance_tracker.action_history.append(action)
+            self.performance_tracker.position_history.append(next_state.position)
+            
+            total_reward += reward
+            
+            if verbose and steps % 10 == 0:
+                action_desc_map = {
+                    'MOVE_FORWARD': "avance",
+                    'TURN_LEFT': "tourne à gauche",
+                    'TURN_RIGHT': "tourne à droite",
+                    'TOUCH': "touche"
+                }
+                action_desc = action_desc_map.get(action.name, action.name)
+                print(f"  Étape {steps}: {action_desc} -> position {next_state.position}, récompense {reward:.1f}")
+            
+            if done:
+                success = env_adapter.is_won()
+                if verbose:
+                    if success:
+                        print(f"\n[SUCCÈS] Pizza trouvée en {steps} étapes! (récompense totale: {total_reward:.1f})")
+                    else:
+                        print(f"\n[ÉCHEC] Épisode terminé en {steps} étapes (récompense totale: {total_reward:.1f})")
+                break
+            
+            current_state = next_state
+        
+        if steps >= self.max_steps and not success:
+            if verbose:
+                print(f"\n[ÉCHEC] Limite d'étapes atteinte ({self.max_steps}) - l'agent n'a pas trouvé la pizza")
+        
+        # Mise à jour des statistiques finales
+        self._update_statistics(total_reward, steps, success)
+        
+        return total_reward, steps, success
+    
     def _update_statistics(self, total_reward: float, steps: int, success: bool):
         """Met à jour les statistiques avec les composants modulaires"""
         # Mise à jour du tracker de performance
         self.performance_tracker.update_episode(steps, success, total_reward)
         
         # Mise à jour du détecteur de convergence
-        self.convergence_detector.update_performance(steps, success, total_reward)
-        
-        # Ajustement adaptatif de la longueur d'épisode
-        self.update_adaptive_episode_length(steps, success)
+        self.convergence_detector.update(steps, success, total_reward)
         
         # Décroissance d'epsilon
-        self.decay_epsilon()
+        self.exploration_strategy.decay_epsilon()
         
         # Nettoyage des données temporaires
         self.performance_tracker.clear_episode_data()
-
-    def get_convergence_info(self) -> Dict[str, Any]:
-        """Retourne les informations de convergence avec le détecteur modulaire"""
-        return self.convergence_detector.get_convergence_info()
-
-    def train_episode(self, game: RLGame, turtle, show_gui: bool = True, verbose: bool = True, training_mode: bool = True) -> Tuple[float, int, bool]:
-        """Exécute un épisode avec l'architecture modulaire"""
-        total_reward = 0.0
-        steps = 0
-
-        current_position = game.getTurtlePosition(turtle)
-        current_orientation = game.getTurtleOrientation(turtle)
-        current_state = self.get_state(current_position, current_orientation)
-
-        while steps < self.max_steps:
-            steps += 1
-
-            # Ajuster la limite d'étapes si l'agent tourne en rond
-            if steps > 50:
-                adjusted_max_steps = self.adjust_max_steps_for_loops(steps)
-                if steps >= adjusted_max_steps:
-                    if verbose:
-                        print(f"\n[TIMEOUT INTELLIGENT] Arrêt après {steps} étapes - détection de boucle")
-                    break
-
-            reward, next_state, success = self._execute_step(game, turtle, current_state, steps, verbose)
-            total_reward += reward
-
-            if show_gui:
-                time.sleep(0.01)
-
-            if success:
-                if verbose:
-                    print(f"\n[SUCCÈS] Pizza trouvée en {steps} étapes! (récompense totale: {total_reward:.1f})")
-                    if steps <= 20:
-                        print("  -> Excellent chemin trouvé!")
-                    elif steps <= 50:
-                        print("  -> Bon chemin!")
-                    else:
-                        print("  -> Chemin trouvé!")
-                break
-
-            current_state = next_state
-        
-        if steps >= self.max_steps and not success:
-            if verbose:
-                print(f"\n[ÉCHEC] Limite d'étapes atteinte ({self.max_steps}) - l'agent n'a pas trouvé la pizza")
-                print(f"  -> Récompense totale: {total_reward:.1f}")
-                print("  -> L'agent doit encore apprendre...")
-
-        if training_mode:
-            self._update_statistics(total_reward, steps, success)
-            converged = self.check_convergence()
-        else:
-            converged = False
-
-        if verbose:
-            stats = self.performance_tracker.get_statistics()
-            convergence_status = "convergé" if converged else "en cours"
-            
-            status_emoji = "✓" if success else "✗"
-            status_text = "Réussi!" if success else "Échoué"
-            
-            print(f"\nEpisode {stats['episode_count']}: {status_emoji} {status_text} en {steps} étapes")
-            print(f"  -> Récompense: {total_reward:.1f}")
-            print(f"  -> Epsilon (exploration): {self.exploration_strategy.get_epsilon():.3f}")
-            print(f"  -> Nouveaux états découverts: {stats['visited_states']}")
-            print(f"  -> Convergence: {convergence_status}")
-
-        return total_reward, steps, success
-
-
+    
+    def check_convergence(self) -> bool:
+        """Vérifie la convergence avec le détecteur modulaire"""
+        return self.convergence_detector.is_converged(self.exploration_strategy.get_epsilon())
+    
     def get_statistics(self) -> Dict[str, Any]:
         """Retourne les statistiques avec les composants modulaires"""
         stats = self.performance_tracker.get_statistics()
-        convergence_info = self.get_convergence_info()
+        convergence_info = self.convergence_detector.get_convergence_info()
         
         return {
-            'q_table_size': self.q_table.get_size(),
+            'q_table_size': self.q_table.size(),
             'epsilon': self.exploration_strategy.get_epsilon(),
             'episode_count': stats['episode_count'],
             'best_steps': stats['best_steps'],
             'converged': convergence_info.get('converged', False),
             'visited_states': stats['visited_states']
         }
-
+    
+    def get_convergence_info(self) -> Dict[str, Any]:
+        """Retourne les informations de convergence avec le détecteur modulaire"""
+        return self.convergence_detector.get_convergence_info()
+    
     def print_convergence_summary(self):
         """Affiche le résumé de convergence avec les composants modulaires"""
         convergence_info = self.get_convergence_info()
@@ -691,7 +496,7 @@ def train_agent(
     
     # Création de l'agent avec configuration
     agent = QLearningAgent(config)
-
+    
     print("=" * 60)
     print("ENTRAÎNEMENT Q-LEARNING - DONATELLOPYZZA (ARCHITECTURE MODULAIRE)")
     print("=" * 60)
@@ -704,11 +509,9 @@ def train_agent(
     print(f"  - Learning rate: {agent.config.learning_rate}")
     print(f"  - Discount factor: {agent.config.discount_factor}")
     print(f"  - Epsilon initial: {agent.config.epsilon}")
-    print(f"  - Exploration systématique: {agent.config.systematic_exploration_episodes} épisodes")
-    print(f"  - Limite minimale: {agent.config.min_adaptive_steps} étapes")
     print("=" * 60)
     print("Fonctionnalités avancées:")
-    print("  [SMART EXPLORER] Exploration systématique")
+    print("  [SMART EXPLORER] Exploration epsilon-greedy")
     print("  [ADAPTIVE LENGTH] Ajustement automatique des limites")
     print("  [CONVERGENCE] Optimisation basée sur les performances")
     print("  [MODULAR ARCHITECTURE] Composants séparés et maintenables")
@@ -718,16 +521,16 @@ def train_agent(
 
     successful_episodes = 0
     episode = 0
+    
+    # Création de l'adaptateur d'environnement
+    env_adapter = EnvironmentAdapter(environment_name, show_gui)
 
     while not agent.convergence_detector.converged and not interrupted and episode < max_episodes:
         episode += 1
         print(f"\nÉPISODE {episode}")
         print("-" * 40)
 
-        game = RLGame(environment_name, gui=show_gui)
-        turtle = game.start()
-
-        reward, steps, success = agent.train_episode(game, turtle, show_gui, verbose)
+        reward, steps, success = agent.train_episode(env_adapter, verbose)
 
         if success:
             successful_episodes += 1
@@ -800,8 +603,6 @@ def train_agent(
     return agent
 
 
-
-
 def get_user_config() -> Dict[str, Any]:
     """Collecte la configuration utilisateur avec architecture modulaire"""
     print("=" * 60)
@@ -863,6 +664,7 @@ def get_user_config() -> Dict[str, Any]:
         'max_episodes': max_episodes
     }
 
+
 def run_training_pipeline(config: Dict[str, Any]) -> QLearningAgent:
     """Exécute le pipeline d'entraînement avec architecture modulaire"""
     agent = train_agent(
@@ -874,6 +676,7 @@ def run_training_pipeline(config: Dict[str, Any]) -> QLearningAgent:
     )
 
     return agent
+
 
 def main():
     """Point d'entrée principal avec architecture modulaire"""
