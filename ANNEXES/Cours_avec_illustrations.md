@@ -78,9 +78,9 @@ Mesure l'écart entre prédictions et cibles.
 
 **Exemple : Erreur quadratique moyenne (MSE)**
 
-\[
+$$
 J(\theta) = \frac{1}{m}\sum_{i=1}^{m}(h_\theta(x^{(i)}) - y^{(i)})^2
-\]
+$$
 
 où \(m\) est le nombre d'exemples d'entraînement.
 
@@ -284,9 +284,9 @@ Objectif : trouver la politique optimale \(\pi^*\) qui maximise le retour cumul�
 
 ## 3.4 Valeur d'état et équation de Bellman
 
-\[
+$$
 V^\pi(s)=E[r+\gamma V^\pi(s')].
-\]
+$$
 
 Schéma :
 
@@ -314,9 +314,9 @@ Schéma :
 La **Q-table** (table Q) stocke la valeur Q(s,a) pour chaque paire (état, action), représentant la **valeur attendue** du retour cumulé en choisissant l'action \(a\) dans l'état \(s\) et en suivant ensuite la politique optimale.
 
 **Définition formelle :**
-\[
+$$
 Q^*(s,a) = \mathbb{E}\left[r + \gamma \max_{a'} Q^*(s',a') \mid s, a\right]
-\]
+$$
 
 **Structure de la Q-table :**
 
@@ -373,9 +373,9 @@ s₉ │ 10.0  8.0  9.0 10.0      │  (état terminal)
 
 **Équation de mise à jour Q-learning :**
 
-\[
+$$
 Q(s,a) \leftarrow Q(s,a) + \alpha \left[r + \gamma \max_{a'} Q(s',a') - Q(s,a)\right]
-\]
+$$
 
 où :
 - \(\alpha\) = taux d'apprentissage
@@ -478,9 +478,9 @@ Méthode qui optimise directement la politique paramétrée.
 
 **Gradient de la fonction objectif :**
 
-\[
+$$
 \nabla_\theta J = \mathbb{E}\left[\nabla_\theta \log \pi_\theta(a|s) \cdot G_t\right]
-\]
+$$
 
 où \(G_t\) est le retour cumulé (discounted return).
 
