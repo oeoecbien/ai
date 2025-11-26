@@ -1,37 +1,78 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Choix de la porte logique : 'AND', 'OR' ou 'XOR'
-PORTE_LOGIQUE = 'AND'  # Changer cette valeur pour choisir la porte logique
-
 # 1. Créer le dataset
 # X: Les entrées (input)
-# Y: Les sorties attendues (labels)
+# Y: Les sorties attendues (labels) - Classes attribuées manuellement
 
 X = [
-    (0, 0),  # Entrée 1
-    (0, 1),  # Entrée 2
-    (1, 0),  # Entrée 3
-    (1, 1)   # Entrée 4
+    # Points classiques
+    (0, 0),      # Point 1
+    (0, 1),      # Point 2
+    (1, 0),      # Point 3
+    (1, 1),      # Point 4
+    # Points supplémentaires avec valeurs décimales
+    (0.2, 0.1),  # Point 5
+    (0.1, 0.2),  # Point 6
+    (0.3, 0.2),  # Point 7
+    (0.2, 0.3),  # Point 8
+    (0.8, 0.7),  # Point 9
+    (0.7, 0.8),  # Point 10
+    (0.9, 0.9),  # Point 11
+    (0.6, 0.6),  # Point 12
+    (0.4, 0.5),  # Point 13
+    (0.5, 0.4),  # Point 14
+    # Points avec valeurs négatives
+    (-0.2, 0.3), # Point 15
+    (0.3, -0.2), # Point 16
+    (-0.1, -0.1), # Point 17
+    # Points avec valeurs > 1
+    (1.2, 0.8),  # Point 18
+    (0.8, 1.2),  # Point 19
+    (1.3, 1.1),  # Point 20
+    # Points intermédiaires
+    (0.25, 0.75), # Point 21
+    (0.75, 0.25), # Point 22
+    (0.15, 0.85), # Point 23
+    (0.85, 0.15), # Point 24
 ]
 
-# Fonction pour générer les labels selon la porte logique choisie
-def generer_labels(porte):
-    if porte.upper() == 'AND':
-        return [0, 0, 0, 1]  # (0,0)->0, (0,1)->0, (1,0)->0, (1,1)->1
-    elif porte.upper() == 'OR':
-        return [0, 1, 1, 1]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->1
-    elif porte.upper() == 'XOR':
-        return [0, 1, 1, 0]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->0
-    else:
-        raise ValueError(f"Porte logique non reconnue: {porte}. Utilisez 'AND', 'OR' ou 'XOR'")
+# Classes attribuées manuellement (en dur) pour chaque point
+# Le perceptron devra apprendre à classifier ces points
+Y = [
+    0,  # (0, 0) -> Classe 0
+    0,  # (0, 1) -> Classe 0
+    0,  # (1, 0) -> Classe 0
+    1,  # (1, 1) -> Classe 1
+    # Points supplémentaires
+    0,  # (0.2, 0.1) -> Classe 0
+    0,  # (0.1, 0.2) -> Classe 0
+    0,  # (0.3, 0.2) -> Classe 0
+    0,  # (0.2, 0.3) -> Classe 0
+    1,  # (0.8, 0.7) -> Classe 1
+    1,  # (0.7, 0.8) -> Classe 1
+    1,  # (0.9, 0.9) -> Classe 1
+    1,  # (0.6, 0.6) -> Classe 1
+    0,  # (0.4, 0.5) -> Classe 0
+    0,  # (0.5, 0.4) -> Classe 0
+    # Points avec valeurs négatives
+    0,  # (-0.2, 0.3) -> Classe 0
+    0,  # (0.3, -0.2) -> Classe 0
+    0,  # (-0.1, -0.1) -> Classe 0
+    # Points avec valeurs > 1
+    1,  # (1.2, 0.8) -> Classe 1
+    1,  # (0.8, 1.2) -> Classe 1
+    1,  # (1.3, 1.1) -> Classe 1
+    # Points intermédiaires
+    0,  # (0.25, 0.75) -> Classe 0
+    0,  # (0.75, 0.25) -> Classe 0
+    0,  # (0.15, 0.85) -> Classe 0
+    0,  # (0.85, 0.15) -> Classe 0
+]
 
-Y = generer_labels(PORTE_LOGIQUE)
-
-# Avertissement pour XOR (non linéairement séparable)
-if PORTE_LOGIQUE.upper() == 'XOR':
-    print("ATTENTION: XOR n'est pas linéairement séparable.")
-    print("   Un perceptron simple ne pourra pas apprendre cette fonction correctement.\n")
+# Note: Les classes sont attribuées manuellement
+# Le perceptron devra apprendre à séparer ces classes
+print(f"Dataset: {len(X)} points avec classes attribuées manuellement\n")
 
 # Hyperparamètres
 TAUX_APPRENTISSAGE = 0.1
@@ -47,7 +88,7 @@ b = 0.0  # Biais
 def activation(somme):
     return 1 if somme >= 0 else 0
 
-print(f"--- Début de l'entraînement pour la porte {PORTE_LOGIQUE} ---")
+print("--- Début de l'entraînement ---")
 
 # Boucle d'entraînement
 for epoque in range(EPOQUES):
@@ -86,7 +127,7 @@ for epoque in range(EPOQUES):
 print("--- Fin de l'entraînement ---")
 
 # --- Test du Perceptron entraîné ---
-print(f"\n--- Test final du Perceptron ({PORTE_LOGIQUE}) ---")
+print("\n--- Test final du Perceptron ---")
 for (x1, x2), y_reel in zip(X, Y):
     somme_ponderee = (x1 * w1) + (x2 * w2) + b
     y_predit = activation(somme_ponderee)
@@ -114,8 +155,10 @@ if points_classe_1:
 
 # Tracer la frontière de décision
 # La frontière est définie par: w1*x1 + w2*x2 + b = 0
+x_min_plot = min(x[0] for x in X) - 0.2
+x_max_plot = max(x[0] for x in X) + 0.2
 if w2 != 0:
-    x1_line = np.linspace(-0.5, 1.5, 100)
+    x1_line = np.linspace(x_min_plot, x_max_plot, 100)
     x2_line = -(w1 * x1_line + b) / w2
     ax.plot(x1_line, x2_line, color='blue', linestyle='--', 
             linewidth=2, label='Frontiere de decision')
@@ -124,12 +167,16 @@ elif w1 != 0:
     ax.axvline(x=x1_line, color='blue', linestyle='--', 
                linewidth=2, label='Frontiere de decision')
 
-# Configuration du graphique
-ax.set_xlim(-0.5, 1.5)
-ax.set_ylim(-0.5, 1.5)
+# Configuration du graphique - Ajuster les limites pour inclure tous les points
+x_min = min(x[0] for x in X) - 0.2
+x_max = max(x[0] for x in X) + 0.2
+y_min = min(x[1] for x in X) - 0.2
+y_max = max(x[1] for x in X) + 0.2
+ax.set_xlim(x_min, x_max)
+ax.set_ylim(y_min, y_max)
 ax.set_xlabel('x1', fontsize=12)
 ax.set_ylabel('x2', fontsize=12)
-ax.set_title(f'Perceptron - Classification {PORTE_LOGIQUE}', fontsize=14)
+ax.set_title('Perceptron - Classification avec classes attribuées manuellement', fontsize=14)
 ax.grid(True, alpha=0.3)
 ax.legend(loc='upper left')
 ax.set_aspect('equal')
@@ -145,7 +192,7 @@ plt.tight_layout()
 # Sauvegarder le graphique
 import os
 os.makedirs('Images', exist_ok=True)
-chemin_image = os.path.join('Images', f'perceptron_graph_{PORTE_LOGIQUE.lower()}.png')
+chemin_image = os.path.join('Images', 'perceptron_graph_classes_manuelles.png')
 plt.savefig(chemin_image, dpi=150, bbox_inches='tight')
 print(f"Graphique sauvegardé sous '{chemin_image}'")
 
