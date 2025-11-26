@@ -311,18 +311,61 @@ Schéma :
 
 ## 4.1 Q-table
 
-Table de valeurs Q pour chaque paire (état, action) :
+La **Q-table** (table Q) stocke la valeur Q(s,a) pour chaque paire (état, action), représentant la **valeur attendue** du retour cumulé en choisissant l'action \(a\) dans l'état \(s\) et en suivant ensuite la politique optimale.
+
+**Définition formelle :**
+\[
+Q^*(s,a) = \mathbb{E}\left[r + \gamma \max_{a'} Q^*(s',a') \mid s, a\right]
+\]
+
+**Structure de la Q-table :**
 
 ```
-        Actions
-        a1      a2      a3
-┌─────────────────────────────┐
-s1  │  Q11    Q12    Q13      │
-s2  │  Q21    Q22    Q23      │
-s3  │  Q31    Q32    Q33      │
-└─────────────────────────────┘
-États
+                    Actions disponibles
+            ┌────────────────────────────────────┐
+            │   a₁      a₂      a₃      ...      │
+            ├────────────────────────────────────┤
+            │                                    │
+États    s₁ │  Q(s₁,a₁) Q(s₁,a₂) Q(s₁,a₃) ...    │
+            │                                    │
+         s₂ │  Q(s₂,a₁) Q(s₂,a₂) Q(s₂,a₃) ...    │
+            │                                    │
+         s₃ │  Q(s₃,a₁) Q(s₃,a₂) Q(s₃,a₃) ...    │
+            │                                    │
+  =     ... │   ...      ...      ...     ...    │
+            └────────────────────────────────────┘
 ```
+
+**Interprétation :**
+- Chaque cellule \(Q(s,a)\) représente la **qualité** de l'action \(a\) dans l'état \(s\)
+- Plus la valeur est élevée, meilleure est l'action dans cet état
+- La politique optimale : \(\pi^*(s) = \arg\max_a Q(s,a)\) (choisir l'action avec la plus grande valeur Q)
+
+**Exemple concret (grille 3×3) :**
+
+```
+Actions: ↑ (haut), ↓ (bas), ← (gauche), → (droite)
+État cible: s₉ (coin inférieur droit, récompense +10)
+
+        Actions
+        ↑    ↓    ←    →
+┌─────────────────────────────┐
+s₁ │  2.5  1.0  1.0  3.0      │  (état initial)
+s₂ │  3.5  2.0  2.5  4.0      │
+s₃ │  5.0  3.5  4.0  6.0      │
+s₄ │  4.0  2.5  3.0  5.0      │
+s₅ │  6.0  4.0  5.0  7.0      │
+s₆ │  8.0  6.0  7.0  9.0      │
+s₇ │  7.0  5.0  6.0  8.0      │
+s₈ │  9.0  7.0  8.0  9.5      │
+s₉ │ 10.0  8.0  9.0 10.0      │  (état terminal)
+└─────────────────────────────┘
+```
+
+**Limitations :**
+- Nécessite un espace d'états **discret et fini**
+- Ne peut pas généraliser à des états non vus
+- Devient impraticable pour de grands espaces d'états (curse of dimensionality)
 
 ---
 
@@ -390,7 +433,7 @@ Buffer d'expériences (mémoire)
 │ (s₁,a₁,r₁,s₁'), (s₂,a₂,r₂,s₂'), ...          │
 │ (s₃,a₃,r₃,s₃'), (s₄,a₄,r₄,s₄'), ...          │
 │ ...                                          │
-└──────────────────────────────────────────────┘                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+└──────────────────────────────────────────────┘                                                                                                                
          │
          ▼
     Échantillonnage
@@ -504,7 +547,3 @@ Renforcement :
 - Objectif : maximiser la récompense cumulée
 - Apprentissage par essais-erreurs
 - Compromis exploration/exploitation
-
----
-
-**Fin du document**
