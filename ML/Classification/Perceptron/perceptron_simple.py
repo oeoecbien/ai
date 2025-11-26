@@ -1,4 +1,7 @@
-# 1. Créer le dataset pour la porte AND
+# Choix de la porte logique : 'AND', 'OR' ou 'XOR'
+PORTE_LOGIQUE = 'AND'  # Changer cette valeur pour choisir la porte logique
+
+# 1. Créer le dataset
 # X: Les entrées (input), avec un 1 pour le biais pour simplifier la formule
 # Y: Les sorties attendues (labels)
 
@@ -9,12 +12,23 @@ X = [
     (1, 1)   # Entrée 4
 ]
 
-Y = [
-    0,       # Sortie attendue pour (0, 0)
-    0,       # Sortie attendue pour (0, 1)
-    0,       # Sortie attendue pour (1, 0)
-    1        # Sortie attendue pour (1, 1)
-]
+# Fonction pour générer les labels selon la porte logique choisie
+def generer_labels(porte):
+    if porte.upper() == 'AND':
+        return [0, 0, 0, 1]  # (0,0)->0, (0,1)->0, (1,0)->0, (1,1)->1
+    elif porte.upper() == 'OR':
+        return [0, 1, 1, 1]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->1
+    elif porte.upper() == 'XOR':
+        return [0, 1, 1, 0]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->0
+    else:
+        raise ValueError(f"Porte logique non reconnue: {porte}. Utilisez 'AND', 'OR' ou 'XOR'")
+
+Y = generer_labels(PORTE_LOGIQUE)
+
+# Avertissement pour XOR (non linéairement séparable)
+if PORTE_LOGIQUE.upper() == 'XOR':
+    print("ATTENTION: XOR n'est pas linéairement séparable.")
+    print("   Un perceptron simple ne pourra pas apprendre cette fonction correctement.\n")
 
 # Hyperparamètres
 TAUX_APPRENTISSAGE = 0.1
@@ -31,7 +45,7 @@ b = 0.0 # Biais
 def activation(somme):
     return 1 if somme >= 0 else 0
 
-print("--- Début de l'entraînement ---")
+print(f"--- Début de l'entraînement pour la porte {PORTE_LOGIQUE} ---")
 
 # Boucle d'entraînement
 for epoque in range(EPOQUES):
@@ -70,7 +84,7 @@ for epoque in range(EPOQUES):
 print("--- Fin de l'entraînement ---")
 
 # --- Test du Perceptron entraîné ---
-print("\n--- Test final du Perceptron ---")
+print(f"\n--- Test final du Perceptron ({PORTE_LOGIQUE}) ---")
 for (x1, x2), y_reel in zip(X, Y):
     somme_ponderee = (x1 * w1) + (x2 * w2) + b
     y_predit = activation(somme_ponderee)

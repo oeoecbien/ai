@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-# 1. Créer le dataset pour la porte AND
+# Choix de la porte logique : 'AND', 'OR' ou 'XOR'
+PORTE_LOGIQUE = 'AND'  # Changer cette valeur pour choisir la porte logique
+
+# 1. Créer le dataset
 # X: Les entrées (input)
 # Y: Les sorties attendues (labels)
 
@@ -12,12 +15,23 @@ X = [
     (1, 1)   # Entrée 4
 ]
 
-Y = [
-    0,       # Sortie attendue pour (0, 0)
-    0,       # Sortie attendue pour (0, 1)
-    0,       # Sortie attendue pour (1, 0)
-    1        # Sortie attendue pour (1, 1)
-]
+# Fonction pour générer les labels selon la porte logique choisie
+def generer_labels(porte):
+    if porte.upper() == 'AND':
+        return [0, 0, 0, 1]  # (0,0)->0, (0,1)->0, (1,0)->0, (1,1)->1
+    elif porte.upper() == 'OR':
+        return [0, 1, 1, 1]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->1
+    elif porte.upper() == 'XOR':
+        return [0, 1, 1, 0]  # (0,0)->0, (0,1)->1, (1,0)->1, (1,1)->0
+    else:
+        raise ValueError(f"Porte logique non reconnue: {porte}. Utilisez 'AND', 'OR' ou 'XOR'")
+
+Y = generer_labels(PORTE_LOGIQUE)
+
+# Avertissement pour XOR (non linéairement séparable)
+if PORTE_LOGIQUE.upper() == 'XOR':
+    print("ATTENTION: XOR n'est pas linéairement séparable.")
+    print("   Un perceptron simple ne pourra pas apprendre cette fonction correctement.\n")
 
 # Hyperparamètres
 TAUX_APPRENTISSAGE = 0.1
@@ -33,7 +47,7 @@ b = 0.0  # Biais
 def activation(somme):
     return 1 if somme >= 0 else 0
 
-print("--- Début de l'entraînement ---")
+print(f"--- Début de l'entraînement pour la porte {PORTE_LOGIQUE} ---")
 
 # Boucle d'entraînement
 for epoque in range(EPOQUES):
@@ -72,7 +86,7 @@ for epoque in range(EPOQUES):
 print("--- Fin de l'entraînement ---")
 
 # --- Test du Perceptron entraîné ---
-print("\n--- Test final du Perceptron ---")
+print(f"\n--- Test final du Perceptron ({PORTE_LOGIQUE}) ---")
 for (x1, x2), y_reel in zip(X, Y):
     somme_ponderee = (x1 * w1) + (x2 * w2) + b
     y_predit = activation(somme_ponderee)
@@ -115,7 +129,7 @@ ax.set_xlim(-0.5, 1.5)
 ax.set_ylim(-0.5, 1.5)
 ax.set_xlabel('x1', fontsize=12)
 ax.set_ylabel('x2', fontsize=12)
-ax.set_title('Perceptron - Classification AND', fontsize=14)
+ax.set_title(f'Perceptron - Classification {PORTE_LOGIQUE}', fontsize=14)
 ax.grid(True, alpha=0.3)
 ax.legend(loc='upper left')
 ax.set_aspect('equal')
@@ -131,7 +145,7 @@ plt.tight_layout()
 # Sauvegarder le graphique
 import os
 os.makedirs('Images', exist_ok=True)
-chemin_image = os.path.join('Images', 'perceptron_graph.png')
+chemin_image = os.path.join('Images', f'perceptron_graph_{PORTE_LOGIQUE.lower()}.png')
 plt.savefig(chemin_image, dpi=150, bbox_inches='tight')
 print(f"Graphique sauvegardé sous '{chemin_image}'")
 
