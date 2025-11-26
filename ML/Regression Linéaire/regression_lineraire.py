@@ -120,6 +120,13 @@ print("\n   Comparaison prédictions vs valeurs réelles :")
 for i in range(min(6, len(X_test))):
     print(f"   Expérience: {X_test[i][0]:.1f} ans -> Prédit: {y_pred[i]:.2f} € | Réel: {y_test[i]:.2f} €")
 
+# Calcul des gradients (pour descente de gradient)
+t1 = np.sum((y_pred - y_test) * X_test.flatten())
+t0 = np.sum(y_pred - y_test)
+
+print(f"\n   Gradient t1 (coefficient) : {t1:.2f}")
+print(f"   Gradient t0 (intercept) : {t0:.2f}")
+
 # 8. Évaluation du modèle
 print("\n12. Évaluation du modèle :")
 

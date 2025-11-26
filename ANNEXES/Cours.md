@@ -4,49 +4,210 @@
 
 ---
 
+## 0. Introduction à l'intelligence artificielle
+
+### 0.1 Définir l'intelligence artificielle
+
+Évolution de l'IA depuis les années 1950 :
+- **1950 :** Artificial Intelligence - Démonstration du comportement humain par la machine
+- **1980 :** Machine Learning (ML) - Apprentissage machine à partir de données
+- **2010 :** Deep Learning (DL) - Modèles de ML qui imitent le fonctionnement du cerveau
+- **2020 :** Generative AI - Modèles de DL qui créent du contenu original
+
+### 0.2 Les grands types d'IA
+
+1. **Le supervisé**
+   - La régression (prédire une valeur continue)
+   - La classification (prédire une classe)
+
+2. **Le non-supervisé**
+   - Clustering
+   - Réduction de dimensions
+   - Apprentissage de représentations
+
+3. **Auto-supervisé**
+   - Modélisation du langage
+
+4. **Le renforcement**
+   - Prise de décision
+
+---
+
 ## 1. Apprentissage supervisé
 
 ### 1.1 Principe général
 
 **But :** Apprendre une fonction qui associe des entrées (X) à des sorties (Y) à partir d'exemples (données étiquetées).
 
-### 1.2 Régression
+### 1.2 La pipeline d'un projet ML
+
+Étapes essentielles :
+
+1. **Préparer les données (70% du travail)**
+   - Homogénéiser leur format (même unité)
+   - Supprimer les données incomplètes
+   - Supprimer les anomalies
+   - Éventuellement homogénéiser leur distribution
+
+2. **Entraînement (30% du travail)**
+   - Définir le modèle (nb entrées / sorties / couches cachées)
+   - Choisir les hyperparamètres (e.g., taux d'apprentissage)
+
+3. **Évaluation**
+   - Usage d'un jeu de validation de manière itérative
+   - Ajuster les choix des hyperparamètres
+   - Comparer plusieurs modèles
+
+4. **Test**
+   - Usage d'un jeu de test
+   - Teste une unique fois le modèle final sur de nouvelles données
+
+### 1.3 Régression
 
 Prédire une valeur continue.
 
-**Exemple :** Prix d'un appartement à partir de caractéristiques (surface, quartier, étage, etc.)
+**Exemples d'applications :**
+- Prix d'un appartement à partir de caractéristiques (surface, quartier, étage, etc.)
+- Prédire le nombre d'appels hebdomadaires pour le support utilisateur
+- Prédire les pannes des produits installés chez les clients
 
-### 1.3 Classification
+### 1.4 Classification
 
 Prédire une étiquette discrète.
 
-**Exemple :** Reconnaître quel chiffre est présent sur une image (classification MNIST)
+**Exemples d'applications :**
+- Reconnaître quel chiffre est présent sur une image (classification MNIST)
+- Trier des légumes automatiquement
 
-### 1.4 Fonction hypothèse
+### 1.5 Fonction hypothèse (régression linéaire)
 
-Modèle paramétré par des poids \(\Theta\) qui approxime \(f(X)\).
+La fonction approximée se nomme *h* (hypothèse) :
+
+$$f(X) = aX + b \quad \Leftrightarrow \quad h(X) = \Theta_0 + \Theta_1 X$$
+
+où \(\Theta_0\) et \(\Theta_1\) sont les paramètres qu'on doit déterminer.
+
+**Formalisation mathématique :**
+
+- \(\Theta\) : paramètres
+- \(m\) : le nombre de données d'entraînement
+- \(X\) : les features (entrées)
+- \(Y\) : les targets (sorties)
+- \((X, Y)\) : une donnée d'entraînement
+
+Si on a \(n\) entrées telles que \(X=\left\{X_{0}, X_{1}, \ldots, X_{n}\right\}\) alors :
+
+$$h(X)=\Theta_{0}+\Theta_{1} X_{1}+\Theta_{2} X_{2}+\ldots+\Theta_{n} X_{n} \approx Y$$
+
+Version compactée : \(h(X)=\sum_{j=0}^{|X|} \Theta_{j} X_{j} \quad\) avec \(X_{0}=1\)
 
 Notation : \(h_\theta(x)\)
 
-### 1.5 Fonction de coût
+### 1.6 Fonction de coût
+
+**Objectif :** Minimiser la fonction \(J(\Theta)\) en trouvant les bons paramètres \(\Theta\).
 
 Mesure l'erreur entre les prédictions et les cibles. On la minimise pour entraîner le modèle.
 
-**Exemples :**
+**Fonction de coût (erreur quadratique) :**
+
+$$
+J(\Theta)=\frac{1}{2} \sum_{i=1}^{m}\left(h_{\Theta}\left(X^{i}\right)-y^{i}\right)^{2}
+$$
+
+où \(m\) est le nombre d'exemples d'entraînement. Le facteur \(\frac{1}{2}\) simplifie le calcul du gradient.
+
+**Autres exemples :**
 - Erreur quadratique moyenne (MSE) pour la régression
 - Entropie croisée pour la classification
 
-### 1.6 Descente de gradient
+### 1.7 Descente de gradient
 
-Méthode itérative pour ajuster les paramètres et réduire le coût.
+Méthode itérative pour ajuster les paramètres et réduire le coût \(J(\Theta)\).
+
+**Principe :**
+1. Initialiser \(\Theta\)
+2. Modifier \(\Theta\) de façon à réduire \(J(\Theta)\)
 
 **Algorithme :**
-1. Initialiser les paramètres \(\theta\)
-2. Calculer le gradient \(\nabla J(\theta)\)
-3. Mettre à jour : \(\theta \leftarrow \theta - \alpha \nabla J(\theta)\)
+1. Initialiser les paramètres \(\Theta\)
+2. Calculer le gradient \(\nabla J(\Theta)\)
+3. Mettre à jour : 
+   $$\Theta_{j}=\Theta_{j}-\alpha \sum_{i=1}^{m} \frac{\partial}{\partial \Theta_{j}} J(\Theta) \quad \text{pour } j=0,1, \ldots,|X|$$
 4. Répéter jusqu'à convergence
 
-où \(\alpha\) est le taux d'apprentissage.
+où \(\alpha\) est le taux d'apprentissage (choisi au préalable, \(\sim 10^{-3}\)).
+
+### 1.8 Le perceptron
+
+#### 1.8.1 Structure du perceptron
+
+Le perceptron est un classifieur linéaire, unité de base des réseaux de neurones.
+
+**Calcul :**
+
+$$\text{Net input} = x_1w_1 + x_2w_2 + \ldots + x_mw_m + b$$
+
+$$\text{Output} = f(\text{net input})$$
+
+où :
+- \(x_i\) : entrées
+- \(w_i\) : poids
+- \(b\) : biais
+- \(f\) : fonction d'activation
+
+#### 1.8.2 Exemples de portes logiques
+
+**Porte AND :**
+
+| \(x_1\) | \(x_2\) | \(y\) |
+|---------|---------|-------|
+| 0       | 0       | 0     |
+| 0       | 1       | 0     |
+| 1       | 0       | 0     |
+| 1       | 1       | 1     |
+
+**Solution :** \(w_1 = w_2 = 1\) et \(b = -1.5\)
+
+**Porte OR :**
+
+| \(x_1\) | \(x_2\) | \(y\) |
+|---------|---------|-------|
+| 0       | 0       | 0     |
+| 0       | 1       | 1     |
+| 1       | 0       | 1     |
+| 1       | 1       | 1     |
+
+#### 1.8.3 Apprentissage du perceptron
+
+Ajustement des poids et du biais :
+
+$$
+\begin{aligned}
+w_{i} &\leftarrow w_{i}+\alpha(y-\hat{y}) x_{i} \\
+b &\leftarrow b+\alpha(y-\hat{y})
+\end{aligned}
+$$
+
+où :
+- \(\alpha\) est le taux d'apprentissage
+- \(y\) est la sortie attendue
+- \(\hat{y}\) est la sortie prédite
+
+#### 1.8.4 Limites du perceptron
+
+**Porte XOR (non linéairement séparable) :**
+
+| \(x_1\) | \(x_2\) | \(y\) |
+|---------|---------|-------|
+| 0       | 0       | 0     |
+| 0       | 1       | 1     |
+| 1       | 0       | 1     |
+| 1       | 1       | 0     |
+
+**Problème :** Le perceptron ne peut pas apprendre le XOR car il s'agit d'un problème non linéairement séparable.
+
+**Solution :** Utiliser plusieurs couches de perceptrons (réseau multicouche).
 
 ---
 
