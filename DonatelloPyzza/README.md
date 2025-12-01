@@ -24,12 +24,12 @@ DonatelloPyzza est un environnement d'apprentissage par renforcement éducatif q
 
 ## Fonctionnalités
 
-### Architecture Modulaire Avancée
-- **Composants séparés** : QTable, ExplorationStrategy, RewardSystem, ConvergenceDetector, PerformanceTracker
+### Architecture Simplifiée et Pédagogique
+- **Classe unique** : `QLearningAgent` avec toutes les fonctionnalités intégrées
 - **États MDP cohérents** : Représentation markovienne avec clés d'état uniformes
-- **Interface propre** : Adaptateur d'environnement pour isolation des appels RLGame
-- **Configuration centralisée** : AgentConfig avec dataclass pour paramètres
-- **Code documenté** : Commentaires pédagogiques détaillés pour chaque composant
+- **Interface directe** : Utilisation directe de `RLGame` sans wrappers inutiles
+- **Configuration simple** : Paramètres passés directement au constructeur
+- **Code documenté** : Commentaires pédagogiques détaillés pour chaque méthode
 
 ### Agent Q-Learning Théoriquement Correct
 - **Formule TD correcte** : `Q(s,a) ← (1-α)Q(s,a) + α[r + γ max Q(s',a')]`
@@ -48,11 +48,10 @@ DonatelloPyzza est un environnement d'apprentissage par renforcement éducatif q
 - **Interface utilisateur intuitive** : Configuration guidée avec options avancées
 
 ### Analyse et Monitoring
-- **Logging structuré** : Fichiers de log et console avec niveaux
 - **Statistiques détaillées** : Taux de succès, étapes moyennes, convergence
-- **Détection de boucles** : Timeout intelligent pour éviter les cycles infinis
-- **Export des résultats** : Métriques et performances exportables
-- **Messages de debug** : Informations détaillées sur le processus d'apprentissage
+- **Détection de convergence** : Critères explicites (taux de succès ≥85%, variance ≤30%, epsilon proche du minimum)
+- **Historique des épisodes** : Suivi des 50 derniers épisodes pour analyse de performance
+- **Messages informatifs** : [SUCCÈS], [ÉCHEC], [ANALYSE], [CONVERGENCE], [LIMITE]
 
 ## Installation
 
@@ -103,35 +102,34 @@ Le script guide l'utilisateur à travers :
 
 ```python
 from donatellopyzza import RLGame, Action, Feedback
-from examples.qlearning import QLearningAgent, AgentConfig, EnvironmentAdapter
+from examples.qlearning import QLearningAgent
 
-# Configuration modulaire de l'agent
-config = AgentConfig(
-    learning_rate=0.1,      # Vitesse d'apprentissage
-    discount_factor=0.9,    # Importance des récompenses futures
-    epsilon=0.3,           # Taux d'exploration initial
-    epsilon_decay=0.995,    # Décroissance de l'exploration
-    convergence_window=20,  # Fenêtre de convergence
-    max_steps=1000         # Limite d'étapes par épisode
+# Création de l'agent avec paramètres personnalisés
+agent = QLearningAgent(
+    learning_rate=0.1,           # Vitesse d'apprentissage
+    discount_factor=0.9,          # Importance des récompenses futures
+    epsilon=0.3,                 # Taux d'exploration initial
+    epsilon_decay=0.995,         # Décroissance de l'exploration
+    epsilon_min=0.01,            # Exploration minimale
+    max_steps_per_episode=1000,  # Limite d'étapes par épisode
+    pure_mode=False              # Mode avec reward shaping
 )
 
-# Création de l'agent avec architecture modulaire
-agent = QLearningAgent(config)
+# Création du jeu
+game = RLGame("maze", show_gui=True)
 
-# Création de l'adaptateur d'environnement
-env_adapter = EnvironmentAdapter("maze", show_gui=True)
-
-# Entraînement d'un épisode avec composants modulaires
-reward, steps, success = agent.train_episode(env_adapter, verbose=True)
+# Entraînement d'un épisode
+reward, steps, success = agent.train_episode(game, verbose=True)
 
 print(f"Résultat: {'Succès' if success else 'Échec'}")
 print(f"Récompense: {reward:.2f}")
 print(f"Étapes: {steps}")
 
-# Accès aux composants modulaires
-print(f"Taille Q-table: {agent.q_table.size()}")
-print(f"Epsilon actuel: {agent.exploration_strategy.get_epsilon():.3f}")
-print(f"Convergence: {agent.check_convergence()}")
+# Accès aux statistiques
+stats = agent.get_statistics()
+print(f"Taille Q-table: {stats['q_table_size']}")
+print(f"Epsilon actuel: {stats['epsilon']:.3f}")
+print(f"Taux de succès: {stats['success_rate']:.1%}")
 ```
 
 ### Exemples Avancés
@@ -140,29 +138,31 @@ print(f"Convergence: {agent.check_convergence()}")
 # Entraînement complet avec convergence automatique
 from examples.qlearning import train_agent
 
-# Entraînement avec architecture modulaire
+# Entraînement avec paramètres personnalisés
 agent = train_agent(
     environment_name="assessment_maze",
     show_gui=True,
     verbose=True,
-    max_episodes=200,
-    config=config
+    learning_rate=0.1,
+    discount_factor=0.9,
+    epsilon=0.3,
+    pure_mode=False,
+    max_episodes=200
 )
 
 # Accès aux statistiques détaillées
 stats = agent.get_statistics()
-convergence_info = agent.get_convergence_info()
 
 print(f"Épisodes: {stats['episode_count']}")
 print(f"Meilleur chemin: {stats['best_steps']} étapes")
 print(f"Q-table: {stats['q_table_size']} états")
-print(f"Convergence: {convergence_info['converged']}")
+print(f"Taux de succès: {stats['success_rate']:.1%}")
 
 # Test de performance sur plusieurs environnements
 environments = ["maze", "assessment_maze", "hard_maze"]
 for env_name in environments:
-    env_adapter = EnvironmentAdapter(env_name, show_gui=False)
-    reward, steps, success = agent.train_episode(env_adapter, verbose=False)
+    game = RLGame(env_name, show_gui=False)
+    reward, steps, success = agent.train_episode(game, verbose=False)
     print(f"{env_name}: {'Succès' if success else 'Échec'} en {steps} étapes")
 ```
 
@@ -183,16 +183,18 @@ Cette implémentation utilise la forme standard de l'équation de Bellman où :
 - **γ (gamma)** : Facteur d'escompte (discount factor)
 - **s'** : État suivant
 
-### Architecture Modulaire
+### Architecture Simplifiée
 
-Le système est organisé en composants spécialisés :
+Le système est organisé en une classe principale avec méthodes intégrées :
 
-- **QTable** : Gestion de la table Q avec clés d'état cohérentes
-- **ExplorationStrategy** : Stratégie epsilon-greedy avec décroissance
-- **RewardSystem** : Système de récompenses markovien avec bonus d'exploration
-- **ConvergenceDetector** : Détection de convergence basée sur critères statistiques
-- **PerformanceTracker** : Suivi des performances et statistiques
-- **EnvironmentAdapter** : Interface d'abstraction pour l'environnement RLGame
+- **QLearningAgent** : Classe principale contenant toute la logique Q-Learning
+  - `_get_state_key()` : Création de clés d'état markoviennes
+  - `_calculate_reward()` : Calcul des récompenses (mode pur ou avancé)
+  - `_choose_action()` : Stratégie epsilon-greedy intégrée
+  - `_update_q_table()` : Mise à jour selon l'équation de Bellman
+  - `train_episode()` : Entraînement sur un épisode complet
+  - `_check_convergence()` : Détection de convergence basée sur critères explicites
+  - `get_statistics()` : Récupération des statistiques de performance
 
 ### Hyperparamètres Recommandés
 
@@ -202,6 +204,8 @@ Le système est organisé en composants spécialisés :
 | **Discount Factor (γ)** | 0.9 | Importance des récompenses futures |
 | **Epsilon (ε)** | 0.3 → 0.01 | Taux d'exploration (décroissant) |
 | **Epsilon Decay** | 0.995 | Vitesse de décroissance de l'exploration |
+| **Epsilon Min** | 0.01 | Exploration minimale (seuil final) |
+| **Max Steps Per Episode** | 1000 | Limite d'étapes par épisode |
 
 ### Système de Récompenses Markovien
 
@@ -210,21 +214,23 @@ Le système de récompenses respecte les propriétés MDP avec deux modes :
 #### Mode Q-Learning Pur (Académique)
 ```python
 # Récompenses minimales selon le cours
-if feedback == Feedback.MOVED_ON_PIZZA:
-    return 1.0  # Récompense positive pour succès
+if feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
+    return 1.0  # Récompense positive pour trouver la pizza
 else:
     return 0.0  # Pas de récompense pour les autres actions
 ```
 
 #### Mode avec Reward Shaping (Avancé)
 ```python
-class RewardSystem:
-    def __init__(self):
-        self.step_penalty = -1.0        # Coût temporel par étape
-        self.wall_penalty = -5.0        # Pénalité pour collision/mur
-        self.pizza_reward = 100.0       # Récompense pour atteindre la pizza
-        self.touch_cost = -0.5          # Coût de l'action TOUCH
-        self.exploration_bonus = 0.5    # Bonus d'exploration count-based
+# Récompenses détaillées dans la méthode _calculate_reward()
+if feedback == Feedback.MOVED_ON_PIZZA or feedback == Feedback.TOUCHED_PIZZA:
+    return 100.0  # Grosse récompense pour la pizza
+elif feedback == Feedback.COLLISION or feedback == Feedback.TOUCHED_WALL:
+    return -5.0   # Pénalité pour toucher un mur
+elif feedback == Feedback.MOVED:
+    return -1.0   # Coût temporel pour chaque déplacement
+else:
+    return -0.5   # Petit coût pour les autres actions
 ```
 
 **Caractéristiques** :
@@ -299,65 +305,56 @@ generator.save_maze("mon_labyrinthe.txt", maze_data)
 
 Le système affiche les messages suivants pendant l'entraînement :
 
-- **[SUCCÈS]** : Pizza trouvée avec le nombre d'étapes et la récompense totale
+- **[SUCCÈS]** : Pizza trouvée avec le nombre d'étapes
 - **[ÉCHEC]** : Épisode terminé sans succès ou limite d'étapes atteinte
-- **[ANALYSE]** : Bilan périodique avec taux de succès et statistiques
-- **[CONVERGENCE]** : Performance stable détectée - arrêt automatique
+- **[ANALYSE]** : Bilan périodique tous les 10 épisodes avec taux de succès et statistiques
+- **[CONVERGENCE]** : Performance stable détectée - arrêt automatique (taux de succès ≥85%, variance ≤30%, epsilon proche du minimum)
 - **[TERMINÉ]** : Entraînement terminé avec convergence atteinte
-- **[INTERRUPTION]** : Entraînement interrompu par l'utilisateur (Ctrl+C)
 - **[LIMITE]** : Entraînement terminé - limite d'épisodes atteinte
-- **[DEBUG]** : Informations de debug pour comprendre la convergence
 
 ## Configuration Avancée
 
 ### Personnalisation de l'Agent
 
 ```python
-# Configuration personnalisée avec architecture modulaire
-config = AgentConfig(
-    learning_rate=0.15,        # Apprentissage plus rapide
-    discount_factor=0.95,     # Plus d'importance aux récompenses futures
-    epsilon=0.4,              # Plus d'exploration initiale
-    epsilon_decay=0.99,       # Décroissance plus lente
-    epsilon_min=0.01,         # Exploration minimale
-    max_steps=200,            # Limite d'étapes par épisode
-    convergence_window=15,    # Fenêtre de convergence réduite
-    convergence_threshold=0.03, # Seuil de convergence plus strict
-    pure_qlearning=True       # Mode Q-Learning pur (sans reward shaping)
+# Configuration personnalisée
+agent = QLearningAgent(
+    learning_rate=0.15,            # Apprentissage plus rapide
+    discount_factor=0.95,          # Plus d'importance aux récompenses futures
+    epsilon=0.4,                   # Plus d'exploration initiale
+    epsilon_decay=0.99,            # Décroissance plus lente
+    epsilon_min=0.01,              # Exploration minimale
+    max_steps_per_episode=200,     # Limite d'étapes par épisode
+    pure_mode=True                 # Mode Q-Learning pur (sans reward shaping)
 )
-
-agent = QLearningAgent(config)
 ```
 
 ### Mode Q-Learning Pur (Cours Académique)
 
 ```python
 # Configuration pour reproduire exactement le Q-Learning du cours
-config = AgentConfig(
+agent = QLearningAgent(
     learning_rate=0.1,         # Valeur classique
     discount_factor=0.9,       # Facteur d'escompte standard
     epsilon=0.3,              # Exploration initiale
     epsilon_decay=0.995,      # Décroissance progressive
     epsilon_min=0.01,         # Exploration minimale
-    pure_qlearning=True,      # Mode pur : récompenses minimales
-    random_seed=42            # Graine pour reproductibilité
+    pure_mode=True            # Mode pur : récompenses minimales (0/1)
 )
-
-agent = QLearningAgent(config)
 ```
 
 ### Mode Performance
 
 ```python
 # Entraînement sans interface graphique (plus rapide)
-env_adapter = EnvironmentAdapter("maze", show_gui=False)
-agent.train_episode(env_adapter, verbose=False)
+game = RLGame("maze", show_gui=False)
+agent.train_episode(game, verbose=False)
 
 # Entraînement en lot sur plusieurs environnements
 environments = ["maze", "assessment_maze", "hard_maze"]
 for env_name in environments:
-    env_adapter = EnvironmentAdapter(env_name, show_gui=False)
-    reward, steps, success = agent.train_episode(env_adapter, verbose=False)
+    game = RLGame(env_name, show_gui=False)
+    reward, steps, success = agent.train_episode(game, verbose=False)
     print(f"{env_name}: {'Succès' if success else 'Échec'} en {steps} étapes")
 ```
 
@@ -384,8 +381,8 @@ pip install --upgrade -r requirements.txt
 #### Performance Lente
 ```python
 # Désactiver l'interface graphique
-env_adapter = EnvironmentAdapter("maze", show_gui=False)
-agent.train_episode(env_adapter, verbose=False)
+game = RLGame("maze", show_gui=False)
+agent.train_episode(game, verbose=False)
 
 # Entraînement en mode silencieux
 agent = train_agent(
@@ -398,34 +395,33 @@ agent = train_agent(
 
 #### Convergence Lente
 ```python
-# Ajuster les hyperparamètres avec architecture modulaire
-config = AgentConfig(
-    learning_rate=0.2,        # Augmenter le taux d'apprentissage
-    epsilon_decay=0.99,       # Décroissance plus lente
-    epsilon_min=0.05,         # Exploration minimale plus élevée
-    convergence_threshold=0.1  # Seuil de convergence plus permissif
+# Ajuster les hyperparamètres
+agent = QLearningAgent(
+    learning_rate=0.2,            # Augmenter le taux d'apprentissage
+    epsilon_decay=0.99,           # Décroissance plus lente
+    epsilon_min=0.05,              # Exploration minimale plus élevée
+    max_steps_per_episode=2000    # Plus d'étapes par épisode si nécessaire
 )
-agent = QLearningAgent(config)
 ```
 
 ### Logs et Debug
 
 ```python
-# Activation des logs détaillés
-import logging
-logging.basicConfig(level=logging.DEBUG)
+# Affichage des statistiques détaillées
+game = RLGame("maze", show_gui=True)
+agent.train_episode(game, verbose=True)
 
-# Affichage des statistiques détaillées avec architecture modulaire
-env_adapter = EnvironmentAdapter("maze", show_gui=True)
-agent.train_episode(env_adapter, verbose=True)
-
-# Accès aux composants pour debug
-print(f"Q-table size: {agent.q_table.size()}")
-print(f"Epsilon: {agent.exploration_strategy.get_epsilon():.3f}")
-print(f"Convergence: {agent.check_convergence()}")
-
-# Affichage des informations de convergence
-agent.print_convergence_summary()
+# Accès aux statistiques pour debug
+stats = agent.get_statistics()
+print(f"Épisodes: {stats['episode_count']}")
+print(f"Succès: {stats['success_count']}")
+print(f"Taux de succès global: {stats['success_rate']:.1%}")
+print(f"Taux de succès récent (30): {stats['recent_success_rate']:.1%}")
+print(f"Meilleur chemin: {stats['best_steps']} étapes")
+print(f"Étapes moyennes récentes: {stats['mean_recent_steps']:.1f}")
+print(f"Q-table size: {stats['q_table_size']}")
+print(f"Epsilon: {stats['epsilon']:.3f}")
+print(f"Convergence: {stats['converged']}")
 ```
 
 ## Exemples et Tutoriels
@@ -480,7 +476,7 @@ agent.print_convergence_summary()
 - Tests unitaires pour les nouvelles fonctionnalités
 - Documentation mise à jour
 - Respect du style de code existant
-- Architecture modulaire maintenue
+- Architecture simple et claire maintenue
 - Respect des propriétés MDP pour les algorithmes RL
 
 ## Licence
@@ -497,11 +493,10 @@ Ce projet est sous licence **Free for non-commercial use**.
 
 ✅ **États terminaux** : Correction de la mise à jour Q-table (pas de bootstrap sur les états terminaux)  
 ✅ **Initialisation cohérente** : Toutes les actions initialisées à 0.0 pour chaque nouvel état  
-✅ **Comptage des états** : Correction du suivi des états visités dans PerformanceTracker  
 ✅ **Mode Q-Learning pur** : Option pour désactiver le reward shaping (cours académique)  
-✅ **Reproductibilité** : Gestion complète des graines aléatoires (random, numpy)  
-✅ **Convergence intelligente** : Détection automatique de la convergence avec arrêt prématuré  
+✅ **Architecture simplifiée** : Une seule classe principale pour faciliter la compréhension  
 ✅ **Code pédagogique** : Commentaires détaillés et accessibles pour l'apprentissage  
+✅ **Interface directe** : Utilisation directe de RLGame sans wrappers inutiles  
 
 ### Comparaison des Modes
 
@@ -520,4 +515,4 @@ Ce projet est sous licence **Free for non-commercial use**.
 
 ---
 
-**DonatelloPyzza** - *Q-Learning académique théoriquement correct avec code pédagogique et architecture modulaire*
+**DonatelloPyzza** - *Q-Learning académique théoriquement correct avec code pédagogique et architecture simplifiée*
