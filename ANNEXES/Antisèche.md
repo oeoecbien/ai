@@ -89,7 +89,7 @@ L'agent apprend par essais-erreurs, reçoit des récompenses/pénalités.
 │    - Tester sur jeu de test                             │
 │    - Évaluer performance finale                         │
 └─────────────────────────────────────────────────────────┘
-```s
+```
 
 **Répartition des données :**
 - **Données d'entraînement** : ~70% - Pour apprendre
