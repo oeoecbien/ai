@@ -63,33 +63,33 @@ L'agent apprend par essais-erreurs, reçoit des récompenses/pénalités.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. PRÉPARATION DES DONNÉES (70% du travail)              │
+│ 1. PRÉPARATION DES DONNÉES (70% du travail)             │
 │    - Homogénéiser le format                             │
-│    - Supprimer données incomplètes                       │
-│    - Supprimer anomalies                                 │
+│    - Supprimer données incomplètes                      │
+│    - Supprimer anomalies                                │
 │    - Normaliser les distributions                       │
 └─────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────┐
-│ 2. ENTRAÎNEMENT (30% du travail)                         │
+│ 2. ENTRAÎNEMENT (30% du travail)                        │
 │    - Définir le modèle                                  │
 │    - Choisir hyperparamètres                            │
 │    - Entraîner sur données d'entraînement               │
 └─────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────┐
-│ 3. ÉVALUATION (Itérative)                                │
+│ 3. ÉVALUATION (Itérative)                               │
 │    - Utiliser jeu de validation                         │
 │    - Ajuster hyperparamètres                            │
 │    - Comparer plusieurs modèles                         │
 └─────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────┐
-│ 4. TEST (Une seule fois)                                 │
+│ 4. TEST (Une seule fois)                                │
 │    - Tester sur jeu de test                             │
 │    - Évaluer performance finale                         │
 └─────────────────────────────────────────────────────────┘
-```
+```s
 
 **Répartition des données :**
 - **Données d'entraînement** : ~70% - Pour apprendre
@@ -270,18 +270,48 @@ Pour 5 ans d'expérience : h(5) = 25000 + 5000×5 = 50000€
 
 ### 4.1 Qu'est-ce qu'un Perceptron ?
 
-**Définition :** Un perceptron est un neurone artificiel simple qui effectue une classification binaire (0 ou 1).
+**Définition :** Un perceptron est un neurone artificiel simple inventé par Frank Rosenblatt en 1957. C'est l'unité de base des réseaux de neurones qui effectue une classification binaire (0 ou 1) en séparant les données par une frontière linéaire.
 
-**Structure :**
+**Contexte historique :**
+- Premier modèle d'apprentissage automatique inspiré du neurone biologique
+- Fondement des réseaux de neurones modernes
+- Limitation : Ne peut résoudre que des problèmes linéairement séparables
+
+**Structure et composants :**
 ```
-Entrées          Poids          Calcul          Activation    Sortie
-x₁ ──→ w₁ ──┐
-x₂ ──→ w₂ ──┤
-...         ├─→ Σ(wᵢ×xᵢ) + b ─→ f(·) ─→ ŷ
-xₙ ──→ wₙ ──┘
-            ↑
-            b (biais)
+              PERCEPTRON
+    ┌───────────────────────────────────┐
+    │                                   │
+    │  x₁ ──[w₁]──┐                     │
+    │  x₂ ──[w₂]──┤                     │
+    │  x₃ ──[w₃]──┤                     │
+    │  ...        │                     │
+    │  xₙ  ──[wₙ]──┤                      │
+    │             │                     │
+    │             ├─→ Σ(wᵢ × xᵢ) + b    │
+    │             │                     │
+    │             ↓                     │
+    │         f(net_input)              │
+    │             │                     │
+    │             ↓                     │
+    │            ŷ ∈ {0, 1}             │
+    │                                   │
+    │  b (biais) ─┘                     │
+    │                                   │
+    └───────────────────────────────────┘
+
+Flux : Entrées → Multiplication par poids → Somme + Biais → Activation → Sortie
 ```
+
+**Composants détaillés :**
+- **Entrées (x₁, x₂, ..., xₙ)** : Les features/attributs des données
+- **Poids (w₁, w₂, ..., wₙ)** : Paramètres à apprendre, déterminent l'importance de chaque entrée
+- **Biais (b)** : Paramètre qui permet de décaler la frontière de décision
+- **Fonction d'activation f(·)** : Fonction seuil (step function) qui transforme la somme pondérée en 0 ou 1
+- **Sortie (ŷ)** : Prédiction binaire (classe 0 ou classe 1)
+
+**Principe de fonctionnement :**
+Le perceptron calcule une combinaison linéaire des entrées pondérées, ajoute un biais, puis applique une fonction d'activation pour produire une sortie binaire. Il apprend en ajustant les poids et le biais pour minimiser les erreurs de classification.
 
 ### 4.2 Fonctionnement Détaillé
 
@@ -467,23 +497,23 @@ Sortie : Décision du conducteur (tourner, freiner, accélérer)
 
 **Architecture :**
 ```
-┌─────────────────────────────────────────────┐
-│  COUCHE D'ENTRÉE                            │
-│  (1 neurone par pixel/feature)             │
-└──────────────┬──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  COUCHE D'ENTRÉE                         │
+│  (1 neurone par pixel/feature)           │
+└──────────────┬───────────────────────────┘
                │
-┌──────────────▼──────────────────────────────┐
-│  COUCHES CACHÉES                            │
-│  (n-2 couches avec neurones)               │
-│  - Couche 1: 13 neurones                   │
-│  - Couche 2: 13 neurones                   │
-└──────────────┬──────────────────────────────┘
+┌──────────────▼───────────────────────────┐
+│  COUCHES CACHÉES                         │
+│  (n-2 couches avec neurones)             │
+│  - Couche 1: 13 neurones                 │
+│  - Couche 2: 13 neurones                 │
+└──────────────┬───────────────────────────┘
                │
-┌──────────────▼──────────────────────────────┐
-│  COUCHE DE SORTIE                           │
-│  (1 neurone par classe)                     │
-│  Ex: 10 neurones pour chiffres 0-9         │
-└─────────────────────────────────────────────┘
+┌──────────────▼───────────────────────────┐
+│  COUCHE DE SORTIE                        │
+│  (1 neurone par classe)                  │
+│  Ex: 10 neurones pour chiffres 0-9       │
+└──────────────────────────────────────────┘
 ```
 
 **Exemple concret : Reconnaissance de chiffres**
@@ -1116,16 +1146,16 @@ Policy Gradient : Apprend directement π(s) → Probabilité de chaque action
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ APPRENTISSAGE SUPERVISÉ                                  │
-│                                                          │
+│ APPRENTISSAGE SUPERVISÉ                                 │
+│                                                         │
 │ Données : (X, Y) étiquetées                             │
 │ Objectif : Prédire Y à partir de X                      │
 │ Exemples : Régression, Classification                   │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ APPRENTISSAGE PAR RENFORCEMENT                           │
-│                                                          │
+│ APPRENTISSAGE PAR RENFORCEMENT                          │
+│                                                         │
 │ Données : Interactions (s, a, r, s')                    │
 │ Objectif : Maximiser récompenses cumulées               │
 │ Exemples : Jeux, Robots, Trading                        │
